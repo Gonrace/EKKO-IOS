@@ -6,6 +6,16 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		DA75BBE62EE09DC900A762ED /* ACRCloudiOSSDK.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DA75BBE42EE09DB700A762ED /* ACRCloudiOSSDK.xcframework */; };
+		DA75BBE72EE09DC900A762ED /* ACRCloudiOSSDK.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DA75BBE42EE09DB700A762ED /* ACRCloudiOSSDK.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		DA75BBE92EE09F2700A762ED /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = DA75BBE82EE09F2700A762ED /* ZIPFoundation */; };
+		DAE1123C2EE0889300C77A71 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE1123B2EE0889300C77A71 /* AVFoundation.framework */; };
+		DAE1123E2EE0889D00C77A71 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE1123D2EE0889D00C77A71 /* AudioToolbox.framework */; };
+		DAE112402EE088A400C77A71 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE1123F2EE088A400C77A71 /* Security.framework */; };
+		DAE112422EE088AD00C77A71 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE112412EE088AD00C77A71 /* SystemConfiguration.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		DAE112082EE083BB00C77A71 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -23,26 +33,48 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		DA75BBC42EE0996800A762ED /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				DA75BBE72EE09DC900A762ED /* ACRCloudiOSSDK.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		DA75BBE42EE09DB700A762ED /* ACRCloudiOSSDK.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = ACRCloudiOSSDK.xcframework; sourceTree = "<group>"; };
 		DAE111F72EE083BA00C77A71 /* EKKO.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EKKO.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DAE112072EE083BB00C77A71 /* EKKOTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EKKOTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DAE112112EE083BB00C77A71 /* EKKOUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EKKOUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DAE1123B2EE0889300C77A71 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		DAE1123D2EE0889D00C77A71 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		DAE1123F2EE088A400C77A71 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		DAE112412EE088AD00C77A71 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		DAE112252EE0845800C77A71 /* Exceptions for "EKKO" folder in "EKKO" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = DAE111F62EE083BA00C77A71 /* EKKO */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		DAE111F92EE083BA00C77A71 /* EKKO */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DAE112252EE0845800C77A71 /* Exceptions for "EKKO" folder in "EKKO" target */,
+			);
 			path = EKKO;
-			sourceTree = "<group>";
-		};
-		DAE1120A2EE083BB00C77A71 /* EKKOTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = EKKOTests;
-			sourceTree = "<group>";
-		};
-		DAE112142EE083BB00C77A71 /* EKKOUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = EKKOUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -52,6 +84,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DAE1123C2EE0889300C77A71 /* AVFoundation.framework in Frameworks */,
+				DAE112422EE088AD00C77A71 /* SystemConfiguration.framework in Frameworks */,
+				DA75BBE62EE09DC900A762ED /* ACRCloudiOSSDK.xcframework in Frameworks */,
+				DAE112402EE088A400C77A71 /* Security.framework in Frameworks */,
+				DAE1123E2EE0889D00C77A71 /* AudioToolbox.framework in Frameworks */,
+				DA75BBE92EE09F2700A762ED /* ZIPFoundation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -75,9 +113,9 @@
 		DAE111EE2EE083BA00C77A71 = {
 			isa = PBXGroup;
 			children = (
+				DA75BBE42EE09DB700A762ED /* ACRCloudiOSSDK.xcframework */,
 				DAE111F92EE083BA00C77A71 /* EKKO */,
-				DAE1120A2EE083BB00C77A71 /* EKKOTests */,
-				DAE112142EE083BB00C77A71 /* EKKOUITests */,
+				DAE112272EE0872F00C77A71 /* Frameworks */,
 				DAE111F82EE083BA00C77A71 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -92,6 +130,17 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		DAE112272EE0872F00C77A71 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				DAE112412EE088AD00C77A71 /* SystemConfiguration.framework */,
+				DAE1123F2EE088A400C77A71 /* Security.framework */,
+				DAE1123D2EE0889D00C77A71 /* AudioToolbox.framework */,
+				DAE1123B2EE0889300C77A71 /* AVFoundation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -102,6 +151,7 @@
 				DAE111F32EE083BA00C77A71 /* Sources */,
 				DAE111F42EE083BA00C77A71 /* Frameworks */,
 				DAE111F52EE083BA00C77A71 /* Resources */,
+				DA75BBC42EE0996800A762ED /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -112,6 +162,7 @@
 			);
 			name = EKKO;
 			packageProductDependencies = (
+				DA75BBE82EE09F2700A762ED /* ZIPFoundation */,
 			);
 			productName = EKKO;
 			productReference = DAE111F72EE083BA00C77A71 /* EKKO.app */;
@@ -129,9 +180,6 @@
 			);
 			dependencies = (
 				DAE112092EE083BB00C77A71 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				DAE1120A2EE083BB00C77A71 /* EKKOTests */,
 			);
 			name = EKKOTests;
 			packageProductDependencies = (
@@ -153,9 +201,6 @@
 			dependencies = (
 				DAE112132EE083BB00C77A71 /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				DAE112142EE083BB00C77A71 /* EKKOUITests */,
-			);
 			name = EKKOUITests;
 			packageProductDependencies = (
 			);
@@ -175,6 +220,7 @@
 				TargetAttributes = {
 					DAE111F62EE083BA00C77A71 = {
 						CreatedOnToolsVersion = 16.2;
+						LastSwiftMigration = 1620;
 					};
 					DAE112062EE083BB00C77A71 = {
 						CreatedOnToolsVersion = 16.2;
@@ -182,6 +228,7 @@
 					};
 					DAE112102EE083BB00C77A71 = {
 						CreatedOnToolsVersion = 16.2;
+						LastSwiftMigration = 1620;
 						TestTargetID = DAE111F62EE083BA00C77A71;
 					};
 				};
@@ -195,6 +242,9 @@
 			);
 			mainGroup = DAE111EE2EE083BA00C77A71;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DAE112262EE0854200C77A71 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DAE111F82EE083BA00C77A71 /* Products */;
 			projectDirPath = "";
@@ -393,12 +443,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"EKKO/Preview Content\"";
 				DEVELOPMENT_TEAM = 62J69A2FA3;
 				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/Frameworks/**";
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Frameworks/**";
+				INFOPLIST_FILE = EKKO/Info.plist;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour enregistrer l'audio de la soirée.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Pour analyser vos mouvements.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -412,6 +469,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = paulserra.EKKO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "EKKO/EKKO-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -422,12 +481,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"EKKO/Preview Content\"";
 				DEVELOPMENT_TEAM = 62J69A2FA3;
 				ENABLE_PREVIEWS = YES;
+				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/Frameworks/**";
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Frameworks/**";
+				INFOPLIST_FILE = EKKO/Info.plist;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour enregistrer l'audio de la soirée.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "Pour analyser vos mouvements.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -441,6 +507,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = paulserra.EKKO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "EKKO/EKKO-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -487,6 +554,7 @@
 		DAE112222EE083BB00C77A71 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 62J69A2FA3;
@@ -495,6 +563,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = paulserra.EKKOUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "EKKOUITests/EKKOUITests-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = EKKO;
@@ -504,6 +574,7 @@
 		DAE112232EE083BB00C77A71 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 62J69A2FA3;
@@ -512,6 +583,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = paulserra.EKKOUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "EKKOUITests/EKKOUITests-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = EKKO;
@@ -558,6 +630,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		DAE112262EE0854200C77A71 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.20;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DA75BBE82EE09F2700A762ED /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DAE112262EE0854200C77A71 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = DAE111EF2EE083BA00C77A71 /* Project object */;
 }
