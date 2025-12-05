@@ -1,26 +1,30 @@
 import SwiftUI
 import CoreMotion
 import AVFoundation
-import ZIPFoundation
+import ZIPFoundation // Assurez-vous d'avoir ajouté le package ZIPFoundation
 import Combine
 import Foundation
 
 // ============================================================================
 // 🎯 SECTION 1: MODÈLES DE DONNÉES
+// Description : Ces structures définissent le format des données manipulées par l'app.
 // ============================================================================
 
+/// Représente un moment fort détecté pendant l'analyse (non sauvegardé sur disque, utilisé en RAM).
 struct HighlightMoment: Identifiable, Hashable {
     let id = UUID()
-    let timestamp: TimeInterval
-    var song: RecognizedSong? = nil
-    let peakScore: Double
+    let timestamp: TimeInterval // Moment précis en secondes depuis le début
+    var song: RecognizedSong? = nil // Musique reconnue (optionnel)
+    let peakScore: Double       // Intensité du mouvement à ce moment
 }
 
+/// Structure simple pour une chanson reconnue.
 struct RecognizedSong: Hashable {
     let title: String
     let artist: String
 }
 
+/// Structure finale du rapport sauvegardé dans l'historique (JSON).
 struct PartyReport: Identifiable, Codable {
     let id: UUID
     let date: Date
@@ -28,6 +32,7 @@ struct PartyReport: Identifiable, Codable {
     let moments: [SavedMoment]
 }
 
+/// Version allégée d'un moment pour la sauvegarde JSON.
 struct SavedMoment: Codable, Identifiable {
     var id = UUID()
     let timestamp: TimeInterval
@@ -36,17 +41,24 @@ struct SavedMoment: Codable, Identifiable {
 }
 
 // ============================================================================
-// 📚 SECTION 2: GESTIONNAIRE D'HISTORIQUE (HistoryManager)
+// 📚 SECTION 2: GESTIONNAIRE D'HISTORIQUE & TAGS
+// Description : Gère la persistance des rapports (JSON) et des tags (UserDefaults/ZIP).
 // ============================================================================
+
 class HistoryManager {
     static let shared = HistoryManager()
     private let fileName = "party_history.json"
+    private let tagsKey = "EKKO_FileTags" // Clé pour le cache local des tags dans UserDefaults
     
+    // --- GESTION DU FICHIER JSON ---
+    
+    /// Retourne l'URL du fichier JSON contenant l'historique des soirées.
     func getHistoryFileURL() -> URL? {
         guard let docPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
         return docPath.appendingPathComponent(fileName)
     }
     
+    /// Sauvegarde un nouveau rapport en tête de liste.
     func saveReport(_ report: PartyReport) {
         var history = loadHistory()
         history.insert(report, at: 0)
@@ -54,50 +66,96 @@ class HistoryManager {
         try? data.write(to: url)
     }
     
+    /// Charge la liste complète des rapports depuis le disque.
     func loadHistory() -> [PartyReport] {
         guard let url = getHistoryFileURL(), let data = try? Data(contentsOf: url) else { return [] }
         return (try? JSONDecoder().decode([PartyReport].self, from: data)) ?? []
     }
     
+    /// Supprime un rapport spécifique.
     func deleteReport(at offsets: IndexSet, from history: inout [PartyReport]) {
         history.remove(atOffsets: offsets)
         guard let url = getHistoryFileURL(), let data = try? JSONEncoder().encode(history) else { return }
         try? data.write(to: url)
     }
+    
+    // --- GESTION DES TAGS (CACHE LOCAL) ---
+    // Note : Ces fonctions gèrent l'affichage rapide des tags dans l'interface.
+    // Le stockage "réel" et portable se fait dans le fichier ZIP via ContentView.
+    
+    func saveTagLocalCache(_ tag: String, for filename: String) {
+        var tags = loadTags()
+        tags[filename] = tag
+        if let data = try? JSONEncoder().encode(tags) {
+            UserDefaults.standard.set(data, forKey: tagsKey)
+        }
+    }
+    
+    func getTag(for filename: String) -> String? {
+        let tags = loadTags()
+        return tags[filename]
+    }
+    
+    func loadTags() -> [String: String] {
+        guard let data = UserDefaults.standard.data(forKey: tagsKey),
+              let tags = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return [:]
+        }
+        return tags
+    }
 }
 
 // ============================================================================
-// 📱 SECTION 3: VUE PRINCIPALE (ContentView - Logique et Interface)
+// 📱 SECTION 3: VUE PRINCIPALE (ContentView)
+// Description : Le coeur de l'application. Gère l'interface, les états, et l'orchestration.
 // ============================================================================
+
 struct ContentView: View {
     
-    // --- États de l'Application ---
+    // --- Propriétés Globales ---
+    
+    /// Récupère dynamiquement la version (ex: 2.0) et le build (ex: 12) depuis Xcode.
+    static var appVersionInfo: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Inconnu"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Inconnu"
+        return "Version \(version) (Build \(build))"
+    }
+    
+    // --- États de l'Application (State) ---
     enum AppState { case idle, recording, analyzing, fastReport }
     @State private var currentState: AppState = .idle
     @State private var statusText: String = "Prêt à capturer la soirée."
-    @State private var savedFiles: [URL] = []
+    @State private var savedFiles: [URL] = [] // Liste des fichiers ZIP
     
-    // --- Données et Chronomètre ---
+    // --- Données & Chrono ---
     @State private var history: [PartyReport] = []
     @State private var highlightMoments: [HighlightMoment] = []
     @State private var elapsedTimeString: String = "00:00:00"
-    
     @State private var timerSubscription: AnyCancellable?
     @State private var startTime: Date?
+    
+    // --- Alertes & Options ---
     @State private var showingStartAlert = false
     @State private var showingShortSessionAlert = false
-    
-    // --- Option Fast Report ON/OFF ---
     @State private var isFastReportEnabled: Bool = true
+    
+    // --- Gestion des Tags (Interface) ---
+    @State private var showingTagAlert = false
+    @State private var fileToTag: URL?
+    @State private var tagInput: String = ""
+    @State private var fileTags: [String: String] = [:] // Cache local pour affichage UI
     
     // --- Managers (Injection de dépendances) ---
     @StateObject private var analysisManager = AnalysisManager()
     private let motionManager = MotionManager()
-    private let audioRecorder = AudioRecorderManager()
+    private let audioRecorder = AudioRecorderManager() // Gère l'audio segmenté
     
-    // 🔑 NOUVEAU: État pour suivre l'activité de l'application
-    @State private var isAppActive: Bool = true
-
+    // --- État Système ---
+    @State private var isAppActive: Bool = true // Pour savoir si l'app est au premier plan
+    
+    // ========================================================================
+    // MARK: - INTERFACE UTILISATEUR (BODY)
+    // ========================================================================
     var body: some View {
         NavigationView {
             ZStack {
@@ -105,51 +163,57 @@ struct ContentView: View {
                 
                 VStack(spacing: 20) {
                     
-                    // Header
+                    // 1. Titre
                     Text("EKKO")
                         .font(.system(size: 40, weight: .heavy, design: .rounded))
                         .padding(.top, 40)
                         .foregroundColor(.white)
                     
-                    // Toggle Fast Report
+                    // 2. Toggle Fast Report
                     HStack {
-                        Image(systemName: isFastReportEnabled ? "bolt.fill" : "bolt.slash.fill").foregroundColor(isFastReportEnabled ? .yellow : .gray)
+                        Image(systemName: isFastReportEnabled ? "bolt.fill" : "bolt.slash.fill")
+                            .foregroundColor(isFastReportEnabled ? .yellow : .gray)
                         Text("Activer le Fast Report")
                         Spacer()
-                        Toggle("", isOn: $isFastReportEnabled)
-                            .labelsHidden()
-                            .tint(.pink)
+                        Toggle("", isOn: $isFastReportEnabled).labelsHidden().tint(.pink)
                     }
-                    .padding()
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(10)
-                    .padding(.horizontal)
+                    .padding().background(Color.white.opacity(0.1)).cornerRadius(10).padding(.horizontal)
                     
-                    // 🔑 CHANGEMENT: Statut dynamique et message d'interruption
+                    // 3. Zone de Statut (Gestion Interruption)
+                    // Affiche un message rouge si l'audio a été coupé par un appel
                     Text(audioRecorder.wasInterrupted ?
-                         "⚠️ REPRENDRE L'ENREGISTREMENT : Veuillez revenir sur l'application (premier plan) pour redémarrer l'enregistrement audio et le chronomètre." :
+                         "⚠️ REPRENDRE L'ENREGISTREMENT : L'audio a été coupé par le système. Revenez sur l'application (premier plan) pour relancer un segment." :
                          statusText)
                         .font(.headline)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                         .foregroundColor(audioRecorder.wasInterrupted ? .red : .gray)
                     
-                    // --- Contenu Principal Dynamique (Switch View) ---
+                    // 4. Switcher de Vues Principal
                     switch currentState {
                         case .idle:
+                            // Vue d'accueil (Liste des fichiers et historique)
                             IdleView(
                                 history: $history,
                                 savedFiles: $savedFiles,
-                                deleteHistoryAction: { indexSet in
-                                    HistoryManager.shared.deleteReport(at: indexSet, from: &history)
-                                },
-                                deleteFileAction: deleteFiles
+                                fileTags: $fileTags,
+                                deleteHistoryAction: { indexSet in HistoryManager.shared.deleteReport(at: indexSet, from: &history) },
+                                deleteFileAction: deleteFiles,
+                                onTagAction: { url in
+                                    // Prépare l'alerte pour taguer un fichier
+                                    fileToTag = url
+                                    tagInput = HistoryManager.shared.getTag(for: url.lastPathComponent) ?? ""
+                                    showingTagAlert = true
+                                }
                             )
                         case .recording:
+                            // Vue pendant l'enregistrement (Chrono)
                             RecordingView(elapsedTimeString: $elapsedTimeString)
                         case .analyzing:
+                            // Vue de chargement
                             AnalyzingView(progress: analysisManager.analysisProgress)
                         case .fastReport:
+                            // Vue de résultat immédiat
                             FastReportView(moments: $highlightMoments, onDone: {
                                 currentState = .idle
                                 statusText = "Prêt pour une nouvelle soirée."
@@ -158,68 +222,80 @@ struct ContentView: View {
                             })
                     }
                     
-                    // --- Bouton d'Action Principal START / STOP ---
+                    // 5. Version en bas de page
+                    Text(ContentView.appVersionInfo)
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                        .padding(.top, 5)
+                    
+                    // 6. Gros Bouton d'Action (Start / Stop)
                     if currentState == .recording || currentState == .idle {
                         Button(action: {
                             if currentState == .idle {
                                 showingStartAlert = true
                             } else {
-                                // Logique d'arrêt
+                                // Vérification session courte
                                 if let start = startTime, Date().timeIntervalSince(start) < 30 {
                                     showingShortSessionAlert = true
                                 } else {
-                                    // Déclenchement de l'arrêt et analyse
-                                    Task {
-                                        await stopAndAnalyze()
-                                    }
+                                    Task { await stopAndAnalyze() }
                                 }
                             }
                         }) {
                             Text(currentState == .recording ? "Terminer la Soirée" : "Démarrer la Capture")
-                                .font(.title3)
-                                .fontWeight(.bold)
+                                .font(.title3).fontWeight(.bold)
                                 .padding()
                                 .frame(maxWidth: .infinity)
                                 .foregroundColor(.white)
-                                .background(
-                                    currentState == .recording ?
-                                    AnyView(Color.red) :
-                                    AnyView(LinearGradient(gradient: Gradient(colors: [Color.orange, Color.pink]), startPoint: .leading, endPoint: .trailing))
-                                )
+                                .background(currentState == .recording ? AnyView(Color.red) : AnyView(LinearGradient(gradient: Gradient(colors: [Color.orange, Color.pink]), startPoint: .leading, endPoint: .trailing)))
                                 .cornerRadius(20)
-                                .shadow(color: currentState == .recording ? Color.red.opacity(0.4) : Color.orange.opacity(0.4), radius: 10, x: 0, y: 5)
                         }
-                        .padding(.horizontal, 40)
-                        .padding(.bottom, 20)
+                        .padding(.horizontal, 40).padding(.bottom, 20)
                     }
                 }
                 .onAppear {
+                    // Chargement initial des données
                     loadSavedFiles()
                     history = HistoryManager.shared.loadHistory()
+                    fileTags = HistoryManager.shared.loadTags()
                 }
                 .preferredColorScheme(.dark)
                 
-                // Alertes
-                .alert("Avant de commencer", isPresented: $showingStartAlert) {
-                    Button("C'est parti !", role: .cancel) { startSession() }
+                // --- LES ALERTES (Pop-ups) ---
+                
+                // Alerte pour ajouter un Tag
+                .alert("Ajouter un Tag", isPresented: $showingTagAlert) {
+                    TextField("Ex: Anniv Thomas", text: $tagInput)
+                    Button("Annuler", role: .cancel) {
+                        fileToTag = nil; tagInput = ""
+                    }
+                    Button("Sauvegarder") {
+                        if let url = fileToTag {
+                            // C'est ici que la magie opère : modification du ZIP
+                            addTagFileToZip(zipURL: url, tag: tagInput)
+                            fileTags = HistoryManager.shared.loadTags() // Rafraîchir UI
+                        }
+                    }
                 } message: {
-                    Text("Pour économiser la batterie, verrouillez l'écran et activez le Mode Avion.")
+                    Text("Ajoutez un mot-clé. Il sera intégré directement dans le fichier ZIP (tag.txt).")
                 }
                 
+                // Alerte Avant démarrage
+                .alert("Avant de commencer", isPresented: $showingStartAlert) {
+                    Button("C'est parti !", role: .cancel) { startSession() }
+                } message: { Text("Verrouillez l'écran et activez le Mode Avion pour la batterie.") }
+                
+                // Alerte Session trop courte
                 .alert("Déjà fini ?", isPresented: $showingShortSessionAlert) {
                     Button("Continuer", role: .cancel) {}
                     Button("Arrêter sans sauvegarder", role: .destructive) { cancelSession() }
-                } message: {
-                    Text("Moins de 30 secondes ? C'est trop court pour détecter une ambiance.")
-                }
+                } message: { Text("Moins de 30 secondes ? C'est trop court.") }
             }
             .navigationBarHidden(true)
         }
-        // Détecte le retour de l'application au premier plan
+        // --- OBSERVATEURS SYSTÈME (Gestion Background/Foreground) ---
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            if !isAppActive {
-                handleAppResumption()
-            }
+            if !isAppActive { handleAppResumption() } // L'app revient : on tente de reprendre l'enregistrement
             isAppActive = true
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
@@ -227,18 +303,21 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Méthodes de Gestion de Session
+    // ========================================================================
+    // MARK: - LOGIQUE MÉTIER
+    // ========================================================================
     
+    /// Démarre une nouvelle session d'enregistrement.
     func startSession() {
         currentState = .recording
         statusText = "🔴 Enregistrement en cours..."
         savedFiles.removeAll()
         
-        // Démarrage technique des Managers
+        // Lance les managers
         audioRecorder.startRecording()
         motionManager.startUpdates(audioRecorder: self.audioRecorder)
         
-        // Chronomètre
+        // Lance le chrono UI
         startTime = Date()
         timerSubscription = Timer.publish(every: 1, on: .main, in: .common).autoconnect().sink { _ in
             let diff = Date().timeIntervalSince(startTime ?? Date())
@@ -249,185 +328,152 @@ struct ContentView: View {
         }
     }
     
-    // Déclenche la reprise si l'application revient en premier plan et qu'elle a été interrompue
+    /// Gère la reprise de l'enregistrement quand l'utilisateur revient sur l'app.
+    /// C'est crucial car iOS coupe le micro lors d'un appel. Cette fonction relance un nouveau segment.
     func handleAppResumption() {
         if audioRecorder.wasInterrupted {
             print("🔊 Reprise forcée : L'application est revenue au premier plan.")
-            // Tente la reprise via le manager (démarrage d'un nouveau segment)
             audioRecorder.resumeAfterForeground()
         }
     }
     
-    /** Gère l'arrêt de l'enregistrement et le workflow d'analyse/sauvegarde (Fast Report ON/OFF) */
+    /// Arrête l'enregistrement, sauvegarde les fichiers et lance l'analyse (ou juste le zip).
     func stopAndAnalyze() async {
-        // Arrêt Chrono
         timerSubscription?.cancel()
         
-        // 1. Arrêt matériel et récupération des chemins (SYNCHRONE)
-        // audioRecorder.stopRecording() retourne maintenant [URL]
+        // 1. Récupérer TOUS les segments audio (il peut y en avoir plusieurs si interruption)
         let audioURLs = audioRecorder.stopRecording()
+        
+        // 2. Sauvegarder le CSV des capteurs
         guard let sensorsURL = motionManager.stopAndSaveToFile() else {
-            statusText = "❌ Erreur de sauvegarde des fichiers."
+            statusText = "❌ Erreur de sauvegarde."
             currentState = .idle
             return
         }
         
-        // 2. Préparation ZIP et Metadata
+        // 3. Créer le fichier Metadata
         let metadataURL = motionManager.createMetadataFile(startTime: startTime ?? Date())
-
-        // Utiliser compactMap pour ajouter metadataURL SEULEMENT si elle est non nulle
+        
+        // 4. Préparer la liste des fichiers pour le ZIP
         var filesToZip = audioURLs
         filesToZip.append(sensorsURL)
         filesToZip.append(contentsOf: [metadataURL].compactMap { $0 })
-
-        // Identification du fichier audio pour l'ANALYSE (on prend le premier)
+        
+        // Pour l'analyse rapide, on prend seulement le PREMIER segment audio (Compromis V2)
         let analysisAudioURL = audioURLs.first
-
+        
         if isFastReportEnabled {
-            // --- PATH A : FAST REPORT ON (ANALYSE LOURDE) ---
-            
+            // --- MODE FAST REPORT ---
             await MainActor.run {
                 self.currentState = .analyzing
-                // Avertissement que l'analyse ne porte que sur le premier segment
-                self.statusText = audioURLs.count > 1 ? "Analyse (sur le premier segment audio)..." : "Analyse des mouvements et reconnaissance ACRCloud..."
+                self.statusText = audioURLs.count > 1 ? "Analyse (segment 1)..." : "Analyse..."
             }
-            
-            // Pause vitale pour écriture disque
             try? await Task.sleep(nanoseconds: 500_000_000)
             
             var moments: [HighlightMoment] = []
-            // On n'analyse que le premier segment (compromis pour le pipeline actuel)
             if let urlToAnalyze = analysisAudioURL {
                 moments = await analysisManager.analyzeSessionComplete(audioURL: urlToAnalyze, sensorsURL: sensorsURL)
             }
             
-            // 4. Création du rapport et sauvegarde Historique
-            let validMoments = moments.map {
-                SavedMoment(timestamp: $0.timestamp, title: $0.song?.title ?? "Inconnu", artist: $0.song?.artist ?? "")
-            }
-            // Utilisation du timestamp du dernier moment ou du temps écoulé total
+            // Création et sauvegarde du rapport
+            let validMoments = moments.map { SavedMoment(timestamp: $0.timestamp, title: $0.song?.title ?? "Inconnu", artist: $0.song?.artist ?? "") }
             let finalDuration = Date().timeIntervalSince(startTime ?? Date())
-            // 🔑 CORRECTION: Utilisation de validMoments
             let report = PartyReport(id: UUID(), date: Date(), duration: finalDuration, moments: validMoments)
             HistoryManager.shared.saveReport(report)
             
-            // 5. Mise à jour de l'interface vers le rapport (MainActor)
             await MainActor.run {
                 self.highlightMoments = moments
                 self.history = HistoryManager.shared.loadHistory()
                 self.statusText = "Voici votre Top Kiff !"
                 self.currentState = .fastReport
-                
-                // 6. ZIP et Nettoyage après l'analyse
+                // Création du ZIP final
                 compressAndSave(files: filesToZip)
             }
-            
         } else {
-            // --- PATH B : FAST REPORT OFF (SAUVEGARDE SEULE) ---
-            
-            // 3. ZIP et Nettoyage immédiat
+            // --- MODE SAUVEGARDE SEULE ---
             compressAndSave(files: filesToZip)
-
             await MainActor.run {
-                self.statusText = "Session sauvegardée dans les fichiers ZIP."
+                self.statusText = "Sauvegardé."
                 self.currentState = .idle
                 self.loadSavedFiles()
             }
         }
     }
     
+    /// Annule tout sans sauvegarder.
     func cancelSession() {
         timerSubscription?.cancel()
-        // Stop audioRecorder retourne l'array des segments enregistrés, mais on les ignore ici
         _ = audioRecorder.stopRecording()
         _ = motionManager.stopAndSaveToFile()
         currentState = .idle
         statusText = "Session annulée."
     }
     
-    /** Calcule le numéro de la prochaine session en scannant les ZIP existants (Ex: EKKO005). */
-    func getNewSessionNumber() -> Int {
+    /// Fonction clé pour la portabilité des tags.
+    /// Modifie le fichier ZIP existant pour y injecter un fichier 'tag.txt'.
+    func addTagFileToZip(zipURL: URL, tag: String) {
         let fm = FileManager.default
-        guard let doc = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return 1 }
+        let tagContent = tag
         
-        // Recherche de tous les fichiers ZIP existants basés sur le préfixe "EKKO"
-        let existingFiles = (try? fm.contentsOfDirectory(at: doc, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "zip" && $0.lastPathComponent.starts(with: "EKKO") }) ?? []
+        // Fichier temporaire
+        let tempTagURL = fm.temporaryDirectory.appendingPathComponent("tag_\(UUID().uuidString).txt")
         
-        var maxNumber = 0
-        let prefix = "EKKO"
-        
-        for url in existingFiles {
-            let name = url.lastPathComponent
-            // Tente d'extraire la chaîne numérique entre "EKKO" et le premier "_"
-            if let startRange = name.range(of: prefix)?.upperBound,
-               let endRange = name.range(of: "_", range: startRange..<name.endIndex)?.lowerBound {
-                
-                let numberString = String(name[startRange..<endRange])
-                // Convertit la chaîne numérique (ex: "005") en Int
-                if let number = Int(numberString) {
-                    maxNumber = max(maxNumber, number)
-                }
-            }
+        do {
+            try tagContent.write(to: tempTagURL, atomically: true, encoding: .utf8)
+            
+            // Ouverture du ZIP en mode UPDATE
+            let archive = try Archive(url: zipURL, accessMode: .update)
+            // Ajout du fichier tag.txt
+            try archive.addEntry(with: "tag.txt", relativeTo: tempTagURL, compressionMethod: .none)
+            
+            try fm.removeItem(at: tempTagURL)
+            print("✅ Tag '\(tag)' intégré dans le ZIP : \(zipURL.lastPathComponent)")
+            
+            // Mise à jour du cache local pour l'affichage immédiat
+            HistoryManager.shared.saveTagLocalCache(tag, for: zipURL.lastPathComponent)
+            
+        } catch {
+            print("❌ Erreur lors de l'ajout du tag au ZIP: \(error)")
+            try? fm.removeItem(at: tempTagURL)
         }
-        return maxNumber + 1
     }
     
-    /** Compresse les fichiers bruts en ZIP avec un nom lisible (EKKO001_YYYYMMDD_XHXXm.zip). */
+    /// Compresse les fichiers bruts en un fichier ZIP final.
+    /// Format : EKKO[HEURE]_[DATE]_[DUREE].zip (ex: EKKO2010_20251205_2h30m.zip)
     func compressAndSave(files: [URL]) {
         let fm = FileManager.default
         
-        // Le premier fichier audio détermine la date de début de session.
+        // On détermine la date de début grâce au nom du premier fichier audio (rec_seg_TIMESTAMP.wav)
         guard let firstAudioURL = files.first(where: { $0.pathExtension == "wav" }) else { return }
-        
-        // 1. EXTRAIRE LES TIMESTAMPS
         let originalFilename = firstAudioURL.lastPathComponent
-
-        // Extraction du timestamp par plages
         let prefixToFind = "rec_seg_"
         
-        guard let startOfTimestamp = originalFilename.range(of: prefixToFind)?.upperBound else {
-            print("❌ Erreur: Préfixe audio non trouvé dans le nom du fichier.")
-            return
-        }
-
-        // Extrait la sous-chaîne entre le préfixe et le ".wav"
+        // Extraction du timestamp (Logique string sécurisée)
+        guard let startOfTimestamp = originalFilename.range(of: prefixToFind)?.upperBound else { return }
         let timestampWithExt = originalFilename[startOfTimestamp...]
-        guard let endOfTimestamp = timestampWithExt.range(of: ".wav")?.lowerBound else {
-             print("❌ Erreur: Extension .wav non trouvée.")
-             return
-        }
-        
+        guard let endOfTimestamp = timestampWithExt.range(of: ".wav")?.lowerBound else { return }
         let timestampString = String(timestampWithExt[..<endOfTimestamp])
+        guard let startTimeStamp = TimeInterval(timestampString) else { return }
         
-        guard let startTimeStamp = TimeInterval(timestampString) else {
-            print("❌ Erreur: Impossible de convertir le timestamp en TimeInterval.")
-            return
-        }
-        
+        let startDate = Date(timeIntervalSince1970: startTimeStamp)
         let endTimeStamp = Date().timeIntervalSince1970
-        let durationSeconds = endTimeStamp - startTimeStamp // Durée totale, y compris les pauses
+        let durationSeconds = endTimeStamp - startTimeStamp
         
-        // 2. CRÉER LE NUMÉRO DE SESSION
-        let sessionNumber = getNewSessionNumber()
-        // Format à trois chiffres (Ex: 1 -> 001)
-        let sessionString = String(format: "%03d", sessionNumber)
+        // Formatage du nom
+        let timeFormatter = DateFormatter(); timeFormatter.dateFormat = "HHmm"
+        let timePart = timeFormatter.string(from: startDate)
         
-        // 3. CALCULER LA DURÉE EN H/M (ex: 2h38m)
         let totalMinutes = Int(durationSeconds / 60.0)
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
-        let durationString = String(format: "%dh%02dm", hours, minutes) // Format XhYYm
+        let durationString = String(format: "%dh%02dm", hours, minutes)
         
-        // 4. CRÉER LA PARTIE DATE (Date de début de l'enregistrement)
-        let startDate = Date(timeIntervalSince1970: startTimeStamp)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyyMMdd"
+        let dateFormatter = DateFormatter(); dateFormatter.dateFormat = "yyyyMMdd"
         let datePart = dateFormatter.string(from: startDate)
         
-        // 5. CONSTRUIRE LE NOM FINAL (Format: EKKO001_YYYYMMDD_XHXXm.zip)
-        let newZipName = "EKKO\(sessionString)_\(datePart)_\(durationString).zip"
-        // Utilisation du répertoire Caches
+        let newZipName = "EKKO\(timePart)_\(datePart)_\(durationString).zip"
+        
+        // Stockage dans CACHES (pour éviter les erreurs iCloud/Partage système)
         guard let cachePath = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
         let zipURL = cachePath.appendingPathComponent(newZipName)
         
@@ -436,27 +482,27 @@ struct ContentView: View {
         do {
             let archive = try Archive(url: zipURL, accessMode: .create)
             for file in files {
-                // Ajout des fichiers au ZIP
+                // Ajout au ZIP
                 try archive.addEntry(with: file.lastPathComponent, relativeTo: file.deletingLastPathComponent())
             }
             print("✅ ZIP créé : \(newZipName)")
-            
-            // Nettoyage des fichiers bruts après zippage
-            for file in files {
-                try fm.removeItem(at: file)
-            }
+            // Nettoyage des fichiers bruts originaux
+            for file in files { try fm.removeItem(at: file) }
         } catch {
             print("❌ Erreur Zip: \(error)")
         }
         loadSavedFiles()
     }
     
+    /// Supprime les fichiers ZIP sélectionnés et leur tag associé.
     func deleteFiles(at offsets: IndexSet) {
         let fm = FileManager.default
         offsets.map { savedFiles[$0] }.forEach { try? fm.removeItem(at: $0) }
         loadSavedFiles()
+        fileTags = HistoryManager.shared.loadTags() // Rafraîchir
     }
     
+    /// Charge la liste des fichiers ZIP disponibles.
     func loadSavedFiles() {
         let fm = FileManager.default
         guard let doc = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
@@ -467,14 +513,17 @@ struct ContentView: View {
 }
 
 // ============================================================================
-// 🎨 SECTION 4: SOUS-VUES (Interface SwiftUI)
+// 🎨 SECTION 4: COMPOSANTS D'INTERFACE (Sous-Vues)
 // ============================================================================
 
 struct IdleView: View {
     @Binding var history: [PartyReport]
     @Binding var savedFiles: [URL]
+    @Binding var fileTags: [String: String]
     var deleteHistoryAction: (IndexSet) -> Void
     var deleteFileAction: (IndexSet) -> Void
+    var onTagAction: (URL) -> Void
+    
     @State private var selectedTab = 0
     
     var body: some View {
@@ -483,21 +532,18 @@ struct IdleView: View {
                 Text("Journal").tag(0)
                 Text("Fichiers ZIP").tag(1)
             }
-            .pickerStyle(SegmentedPickerStyle())
-            .padding()
+            .pickerStyle(SegmentedPickerStyle()).padding()
             
             if selectedTab == 0 {
-                if history.isEmpty {
-                    EmptyState(icon: "music.note.list", text: "Aucune soirée enregistrée.")
-                } else {
+                // VUE JOURNAL
+                if history.isEmpty { EmptyState(icon: "music.note.list", text: "Aucune soirée enregistrée.") }
+                else {
                     List {
                         ForEach(history) { report in
                             NavigationLink(destination: HistoryDetailView(report: report)) {
                                 VStack(alignment: .leading) {
-                                    Text(report.date.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.headline).foregroundColor(.white)
-                                    Text("\(report.moments.count) moment(s) fort(s)")
-                                        .font(.caption).foregroundColor(.orange)
+                                    Text(report.date.formatted(date: .abbreviated, time: .shortened)).font(.headline).foregroundColor(.white)
+                                    Text("\(report.moments.count) moment(s) fort(s)").font(.caption).foregroundColor(.orange)
                                 }
                             }
                             .listRowBackground(Color.white.opacity(0.1))
@@ -507,22 +553,36 @@ struct IdleView: View {
                     .scrollContentBackground(.hidden)
                 }
             } else {
-                if savedFiles.isEmpty {
-                    EmptyState(icon: "doc.zipper", text: "Aucun fichier brut.")
-                } else {
+                // VUE FICHIERS ZIP
+                if savedFiles.isEmpty { EmptyState(icon: "doc.zipper", text: "Aucun fichier brut.") }
+                else {
                     List {
                         ForEach(savedFiles, id: \.self) { file in
                             HStack {
                                 VStack(alignment: .leading) {
-                                    // Affiche le nouveau nom clair du fichier ZIP
                                     Text(file.lastPathComponent).font(.caption).foregroundColor(.white)
                                     Text(getFileSize(url: file)).font(.caption2).foregroundColor(.gray)
+                                    // Affichage du Tag si présent
+                                    if let tag = fileTags[file.lastPathComponent], !tag.isEmpty {
+                                        Text("🏷 \(tag)")
+                                            .font(.caption2)
+                                            .padding(4)
+                                            .background(Color.blue.opacity(0.6))
+                                            .cornerRadius(4)
+                                            .foregroundColor(.white)
+                                    }
                                 }
                                 Spacer()
                                 
-                                // Bouton de partage
+                                // Bouton pour Ajouter/Modifier le Tag
+                                Button(action: { onTagAction(file) }) {
+                                    Image(systemName: "tag.fill").foregroundColor(.yellow)
+                                }
+                                .buttonStyle(BorderlessButtonStyle())
+                                .padding(.trailing, 10)
+                                
+                                // Bouton Partage iOS natif
                                 ShareLink(item: file) { Image(systemName: "square.and.arrow.up") }
-                                    .padding(.leading, 10)
                             }
                             .listRowBackground(Color.white.opacity(0.1))
                         }
@@ -542,267 +602,125 @@ struct IdleView: View {
     }
 }
 
-// Vues utilitaires et d'état
+// Vue pour état vide
 struct EmptyState: View {
-    let icon: String
-    let text: String
-    var body: some View {
-        VStack {
-            Spacer()
-            Image(systemName: icon).font(.system(size: 50)).foregroundColor(.gray)
-            Text(text).foregroundColor(.gray).padding(.top)
-            Spacer()
-        }
-    }
+    let icon: String; let text: String
+    var body: some View { VStack { Spacer(); Image(systemName: icon).font(.system(size: 50)).foregroundColor(.gray); Text(text).foregroundColor(.gray).padding(.top); Spacer() } }
 }
 
+// Vue pendant l'enregistrement
 struct RecordingView: View {
-    @Binding var elapsedTimeString: String
-    @State private var pulse = false
-    
-    var body: some View {
-        VStack(spacing: 30) {
-            Spacer()
-            ZStack {
-                Circle().stroke(Color.red.opacity(0.5), lineWidth: 2).frame(width: 200, height: 200)
-                    .scaleEffect(pulse ? 1.2 : 1.0).opacity(pulse ? 0 : 1)
-                    .onAppear { withAnimation(Animation.easeOut(duration: 1.5).repeatForever(autoreverses: false)) { pulse = true } }
-                
-                Text(elapsedTimeString)
-                    .font(.system(size: 50, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-            }
-            Text("Capture de l'ambiance...").foregroundColor(.gray)
-            Spacer()
-        }
-    }
+    @Binding var elapsedTimeString: String; @State private var pulse = false
+    var body: some View { VStack(spacing: 30) { Spacer(); ZStack { Circle().stroke(Color.red.opacity(0.5), lineWidth: 2).frame(width: 200, height: 200).scaleEffect(pulse ? 1.2 : 1.0).opacity(pulse ? 0 : 1).onAppear { withAnimation(Animation.easeOut(duration: 1.5).repeatForever(autoreverses: false)) { pulse = true } }; Text(elapsedTimeString).font(.system(size: 50, weight: .bold, design: .monospaced)).foregroundColor(.white) }; Text("Capture de l'ambiance...").foregroundColor(.gray); Spacer() } }
 }
 
+// Vue de chargement
 struct AnalyzingView: View {
     let progress: Double
-    var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            ProgressView(value: progress)
-                .progressViewStyle(LinearProgressViewStyle(tint: Color.pink))
-                .padding()
-            Text("Analyse Intelligente en cours...").foregroundColor(.white)
-            Text("\(Int(progress * 100))%").font(.caption).foregroundColor(.gray)
-            Spacer()
-        }
-    }
+    var body: some View { VStack(spacing: 20) { Spacer(); ProgressView(value: progress).progressViewStyle(LinearProgressViewStyle(tint: Color.pink)).padding(); Text("Analyse Intelligente en cours...").foregroundColor(.white); Text("\(Int(progress * 100))%").font(.caption).foregroundColor(.gray); Spacer() } }
 }
 
+// Vue de résultat
 struct FastReportView: View {
-    @Binding var moments: [HighlightMoment]
-    var onDone: () -> Void
-    
-    var body: some View {
-        VStack {
-            Text(moments.count == 1 ? "🏆 LE MOMENT D'OR" : "🔥 TOP 5 DE LA SOIRÉE")
-                .font(.title2).bold().foregroundColor(.white).padding(.top)
-            
-            if moments.isEmpty {
-                Spacer()
-                Text("Aucune musique reconnue 😔").foregroundColor(.gray).padding()
-                Spacer()
-            } else {
-                List {
-                    ForEach(Array(moments.enumerated()), id: \.element.id) { index, m in
-                        HStack(spacing: 15) {
-                            // Le Rang (1, 2, 3...)
-                            ZStack {
-                                Circle()
-                                    .fill(index == 0 ? Color.yellow : (index == 1 ? Color.gray : Color.orange))
-                                    .frame(width: 30, height: 30)
-                                Text("\(index + 1)")
-                                    .font(.headline)
-                                    .foregroundColor(.black)
-                            }
-                            
-                            VStack(alignment: .leading) {
-                                Text(m.song?.title ?? "Inconnu")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                Text(m.song?.artist ?? "")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                            
-                            Spacer()
-                            
-                            // L'heure du passage
-                            Text(formatTime(m.timestamp))
-                                .font(.system(.caption, design: .monospaced))
-                                .padding(6)
-                                .background(Color.white.opacity(0.1))
-                                .cornerRadius(8)
-                                .foregroundColor(.white)
-                        }
-                        .listRowBackground(Color.white.opacity(0.1))
-                        .padding(.vertical, 5)
-                    }
-                }
-                .listStyle(.plain)
-            }
-            
-            Button(action: { onDone() }) {
-                Text("Sauvegarder et continuer")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.blue)
-                    .cornerRadius(15)
-            }
-            .padding()
-        }
-        .background(Color.black)
-    }
-    
-    func formatTime(_ t: TimeInterval) -> String {
-        let h = Int(t) / 3600
-        let m = Int(t) / 60 % 60
-        if h > 0 {
-            return "\(h)h \(m)m"
-        } else {
-            return "\(m) min"
-        }
-    }
+    @Binding var moments: [HighlightMoment]; var onDone: () -> Void
+    var body: some View { VStack { Text(moments.count == 1 ? "🏆 LE MOMENT D'OR" : "🔥 TOP 5 DE LA SOIRÉE").font(.title2).bold().foregroundColor(.white).padding(.top); if moments.isEmpty { Spacer(); Text("Aucune musique reconnue 😔").foregroundColor(.gray).padding(); Spacer() } else { List { ForEach(Array(moments.enumerated()), id: \.element.id) { index, m in HStack(spacing: 15) { ZStack { Circle().fill(index == 0 ? Color.yellow : (index == 1 ? Color.gray : Color.orange)).frame(width: 30, height: 30); Text("\(index + 1)").font(.headline).foregroundColor(.black) }; VStack(alignment: .leading) { Text(m.song?.title ?? "Inconnu").font(.headline).foregroundColor(.white); Text(m.song?.artist ?? "").font(.caption).foregroundColor(.gray) }; Spacer(); Text(formatTime(m.timestamp)).font(.system(.caption, design: .monospaced)).padding(6).background(Color.white.opacity(0.1)).cornerRadius(8).foregroundColor(.white) }.listRowBackground(Color.white.opacity(0.1)).padding(.vertical, 5) } }.listStyle(.plain) }; Button(action: { onDone() }) { Text("Sauvegarder et continuer").font(.headline).foregroundColor(.white).padding().frame(maxWidth: .infinity).background(Color.blue).cornerRadius(15) }.padding() }.background(Color.black) }
+    func formatTime(_ t: TimeInterval) -> String { let h = Int(t) / 3600; let m = Int(t) / 60 % 60; if h > 0 { return "\(h)h \(m)m" } else { return "\(m) min" } }
 }
 
+// Vue de détail historique
 struct HistoryDetailView: View {
     let report: PartyReport
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            List(report.moments) { m in
-                VStack(alignment: .leading) {
-                    Text(m.title).font(.headline).foregroundColor(.white)
-                    Text(m.artist).font(.caption).foregroundColor(.gray)
-                    Text("À \(Int(m.timestamp / 60)) min \(Int(m.timestamp) % 60) s").font(.caption2).foregroundColor(.orange)
-                }
-                .listRowBackground(Color.white.opacity(0.1))
-            }
-            .scrollContentBackground(.hidden)
-        }
-        .navigationTitle("Détails Soirée")
-    }
+    var body: some View { ZStack { Color.black.ignoresSafeArea(); List(report.moments) { m in VStack(alignment: .leading) { Text(m.title).font(.headline).foregroundColor(.white); Text(m.artist).font(.caption).foregroundColor(.gray); Text("À \(Int(m.timestamp / 60)) min \(Int(m.timestamp) % 60) s").font(.caption2).foregroundColor(.orange) }.listRowBackground(Color.white.opacity(0.1)) }.scrollContentBackground(.hidden) }.navigationTitle("Détails Soirée") }
 }
 
+// ============================================================================
+// 🎤 SECTION 5: MANAGER AUDIO (AudioRecorderManager)
+// Description : Gère l'enregistrement WAV. Spécialité : Découpe en segments si interrompu.
+// ============================================================================
 
-// ============================================================================
-// 🎤 SECTION 5: ENREGISTREUR AUDIO (AudioRecorderManager)
-// Description: Gère l'enregistrement en segments et les interruptions.
-// ============================================================================
 class AudioRecorderManager: NSObject, AVAudioRecorderDelegate {
     var audioRecorder: AVAudioRecorder?
-    // 🔑 CHANGEMENT: Liste des URLs de tous les segments audio enregistrés
-    var recordedFileUrls: [URL] = []
-    var wasInterrupted = false
+    var recordedFileUrls: [URL] = [] // Liste de tous les morceaux (segments) de la soirée
+    var wasInterrupted = false // Drapeau : Vrai si l'audio a été coupé brutalement (appel)
 
     override init() {
         super.init()
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(handleInterruption),
-                                               name: AVAudioSession.interruptionNotification,
-                                               object: nil)
+        // Écoute les notifications système d'interruption (Appel, Siri, Alarme...)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleInterruption), name: AVAudioSession.interruptionNotification, object: nil)
     }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
+    deinit { NotificationCenter.default.removeObserver(self) }
     
-    // 🔑 NOUVELLE MÉTHODE : Configure et démarre un NOUVEL enregistreur
+    /// Initialise et lance l'enregistrement dans un NOUVEAU fichier segment.
     private func setupAndStartNewRecorder() -> URL? {
         let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.record, mode: .default, options: [.allowBluetooth])
-            try session.setActive(true)
-        } catch {
-            print("Erreur de configuration de la session audio: \(error)")
-            return nil
-        }
-
+        try? session.setCategory(.record, mode: .default, options: [.allowBluetooth])
+        try? session.setActive(true)
+        
         let docPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        // Utilisation d'un timestamp frais pour nommer le segment
+        // Nom du fichier basé sur le timestamp actuel (pour le tri et la fusion future)
         let filename = "rec_seg_\(Int(Date().timeIntervalSince1970)).wav"
         let newURL = docPath.appendingPathComponent(filename)
         
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVSampleRateKey: 8000,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsFloatKey: false
-        ]
+        // Qualité standard (PCM 16-bit, 8kHz pour la voix/ambiance)
+        let settings: [String: Any] = [AVFormatIDKey: Int(kAudioFormatLinearPCM), AVSampleRateKey: 8000, AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsFloatKey: false]
         
         do {
             audioRecorder = try AVAudioRecorder(url: newURL, settings: settings)
             audioRecorder?.isMeteringEnabled = true
             audioRecorder?.record()
-            self.recordedFileUrls.append(newURL) // Ajoute l'URL du nouveau segment
-            print("✅ Nouvelle session d'enregistrement démarrée: \(filename)")
+            self.recordedFileUrls.append(newURL) // On garde la trace de ce segment
+            print("✅ Nouvelle session audio: \(filename)")
             return newURL
         } catch {
-            print("❌ Erreur REC: \(error)");
+            print("❌ Erreur REC: \(error)")
             return nil
         }
     }
 
-    // Gère l'interruption en arrêtant/démarrant un nouveau segment
+    /// Appelé par iOS quand une interruption survient (ex: Appel entrant).
     @objc func handleInterruption(notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
-            return
-        }
+        guard let userInfo = notification.userInfo, let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt, let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
         
         switch type {
         case .began:
-            // Interruption Démarrée : Arrête le segment actuel pour le finaliser
-            print("🔊 Interruption audio: Débutée. Arrêt du segment actuel.")
+            // L'interruption commence : On arrête proprement le fichier en cours pour le sauvegarder.
+            print("🔊 Interruption audio (Début). Arrêt du segment.")
             self.wasInterrupted = true
             audioRecorder?.stop()
-            
         case .ended:
-            // 🔑 CHANGEMENT: Ne tente pas de reprendre ici, car on le gère au retour en premier plan.
-            print("🔊 Interruption audio: Terminée détectée par le système, mais la reprise sera gérée au retour en premier plan.")
-            // Laisse wasInterrupted à true pour que handleAppResumption prenne le relais.
-            
-        @unknown default:
-            break
+            // L'interruption est finie (ex: Appel terminé).
+            // NOTE : On ne relance PAS l'enregistrement ici car l'app est souvent encore en background.
+            // On attend que l'utilisateur revienne sur l'app (handleAppResumption dans ContentView).
+            print("🔊 Fin interruption système.")
+        @unknown default: break
         }
     }
     
-    // Démarre la première session
+    /// Démarre le tout premier enregistrement.
     func startRecording() {
         self.recordedFileUrls.removeAll()
         _ = setupAndStartNewRecorder()
     }
     
-    // 🔑 NOUVELLE MÉTHODE : Permet à ContentView de forcer la reprise après une interruption.
+    /// Méthode appelée par ContentView quand l'app revient au premier plan après une coupure.
     func resumeAfterForeground() {
         if self.wasInterrupted {
-            print("🔊 Reprise forcée : Tente de démarrer un nouveau segment audio.")
+            // On lance un nouveau segment pour continuer la soirée
             _ = setupAndStartNewRecorder()
             self.wasInterrupted = false
         }
     }
     
-    // 🔑 CHANGEMENT: Retourne TOUTES les URLs des segments
+    /// Arrête tout et retourne la liste de tous les fichiers audios créés.
     func stopRecording() -> [URL] {
         audioRecorder?.stop()
         try? AVAudioSession.sharedInstance().setActive(false)
-        
-        let allUrls = self.recordedFileUrls
+        let all = self.recordedFileUrls
         self.recordedFileUrls.removeAll()
-        
-        return allUrls
+        return all
     }
     
-    // Reste inchangé
+    /// Pour l'animation visuelle (ondes).
     func getCurrentPower() -> Float {
         audioRecorder?.updateMeters()
         return audioRecorder?.averagePower(forChannel: 0) ?? -160.0
@@ -810,128 +728,84 @@ class AudioRecorderManager: NSObject, AVAudioRecorderDelegate {
 }
 
 // ============================================================================
-// 📊 SECTION 6: CAPTEURS & METADATA (MotionManager)
+// 📊 SECTION 6: MANAGER CAPTEURS (MotionManager)
+// Description : Enregistre Accéléromètre, Gyroscope et Niveau sonore dans un CSV.
 // ============================================================================
 
 class MotionManager {
     private let mm = CMMotionManager()
-    private var dataBuffer: [String] = []
+    private var dataBuffer: [String] = [] // Tampon pour éviter d'écrire disque trop souvent
     private var csvString = ""
-    
-    // Métadata de début
     private var batteryLevelStart: Float = 0.0
-    private var batteryStateStart: String = ""
     private var startTime: Date = Date()
     private var fileURL: URL?
 
     func startUpdates(audioRecorder: AudioRecorderManager) {
-        // En-tête CSV complet
+        // En-tête du CSV
         csvString = "timestamp,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,attitude_roll,attitude_pitch,attitude_yaw,gravity_x,gravity_y,gravity_z,audio_power_db\n"
         dataBuffer.removeAll()
         
-        // Initialisation de la batterie/temps
         UIDevice.current.isBatteryMonitoringEnabled = true
         self.batteryLevelStart = UIDevice.current.batteryLevel
-        self.batteryStateStart = batteryStateString(UIDevice.current.batteryState)
         self.startTime = Date()
-
-        // Le CSV utilise le dossier Documents
+        
         let doc = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         self.fileURL = doc.appendingPathComponent("sensors_\(Int(Date().timeIntervalSince1970)).csv")
-
-        mm.deviceMotionUpdateInterval = 0.1 // 10Hz
+        
+        mm.deviceMotionUpdateInterval = 0.1 // Fréquence : 10Hz (10 points par seconde)
         mm.startDeviceMotionUpdates(to: .main) { (deviceMotion, error) in
             guard let data = deviceMotion else { return }
             
             let audioPower = audioRecorder.getCurrentPower()
             let timestamp = Date().timeIntervalSince1970
-
-            // Capteurs complets
-            let ax = data.userAcceleration.x; let ay = data.userAcceleration.y; let az = data.userAcceleration.z
-            let gx = data.rotationRate.x; let gy = data.rotationRate.y; let gz = data.rotationRate.z
-            let roll = data.attitude.roll; let pitch = data.attitude.pitch; let yaw = data.attitude.yaw
-            let gravX = data.gravity.x; let gravY = data.gravity.y; let gravZ = data.gravity.z
-
-            // Construction de la ligne CSV
-            let newLine = "\(timestamp),\(ax),\(ay),\(az),\(gx),\(gy),\(gz),\(roll),\(pitch),\(yaw),\(gravX),\(gravY),\(gravZ),\(audioPower)\n"
+            
+            // Formatage de la ligne CSV
+            let newLine = "\(timestamp),\(data.userAcceleration.x),\(data.userAcceleration.y),\(data.userAcceleration.z),\(data.rotationRate.x),\(data.rotationRate.y),\(data.rotationRate.z),\(data.attitude.roll),\(data.attitude.pitch),\(data.attitude.yaw),\(data.gravity.x),\(data.gravity.y),\(data.gravity.z),\(audioPower)\n"
             self.dataBuffer.append(newLine)
         }
     }
     
-    private func writeBufferToString() {
-        csvString.append(contentsOf: dataBuffer.joined())
-        dataBuffer.removeAll()
-    }
-    
     func stopAndSaveToFile() -> URL? {
         mm.stopDeviceMotionUpdates()
-        writeBufferToString()
+        // Écriture finale
+        csvString.append(contentsOf: dataBuffer.joined())
+        dataBuffer.removeAll()
         
         guard let url = fileURL else { return nil }
-        do {
-            try csvString.write(to: url, atomically: true, encoding: .utf8)
-            return url
-        } catch {
-            print("❌ Erreur sauvegarde CSV: \(error)")
-            return nil
-        }
+        try? csvString.write(to: url, atomically: true, encoding: .utf8)
+        return url
     }
     
-    // CRÉATION DU FICHIER METADATA
+    /// Génère le fichier texte de métadonnées (Info téléphone, batterie, version).
     func createMetadataFile(startTime: Date) -> URL? {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        let batteryLevelEnd = UIDevice.current.batteryLevel
-        let batteryStateEnd = batteryStateString(UIDevice.current.batteryState)
         let endTime = Date()
         let duration = endTime.timeIntervalSince(startTime)
         
         let metadataContent = """
-        METADATA DE LA SESSION EKKO
-        ------------------------------------------
-        App Version: 1.0 (WAV Mode)
-        
-        --- DURÉE & HEURES ---
-        Début: \(startTime)
-        Fin: \(endTime)
-        Durée Totale: \(String(format: "%.2f", duration / 60)) minutes
-        
-        --- APPAREIL & SYSTÈME ---
-        Modèle Appareil: \(UIDevice.current.model)
-        Version iOS: \(UIDevice.current.systemVersion)
-        
-        --- ENERGIE ---
-        Batterie Début: \(String(format: "%.0f%%", self.batteryLevelStart * 100)) (\(self.batteryStateStart))
-        Batterie Fin: \(String(format: "%.0f%%", batteryLevelEnd * 100)) (\(batteryStateEnd))
-        Consommation Estimée: \(String(format: "%.1f%%", (self.batteryLevelStart - batteryLevelEnd) * 100))
-        ------------------------------------------
+        METADATA EKKO
+        ------------------
+        App Version: \(ContentView.appVersionInfo)
+        Date: \(Date())
+        Début Session: \(startTime)
+        Fin Session: \(endTime)
+        Durée: \(String(format: "%.2f", duration / 60)) min
+        Batterie Début: \(self.batteryLevelStart * 100)%
+        Batterie Fin: \(UIDevice.current.batteryLevel * 100)%
         """
         
         let docPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let metadataURL = docPath.appendingPathComponent("metadata_\(Int(Date().timeIntervalSince1970)).txt")
-        
-        do {
-            try metadataContent.write(to: metadataURL, atomically: true, encoding: .utf8)
-            return metadataURL
-        } catch {
-            print("❌ Erreur création metadata: \(error)")
-            return nil
-        }
-    }
-    
-    private func batteryStateString(_ state: UIDevice.BatteryState) -> String {
-        switch state {
-        case .unknown: return "Inconnu"
-        case .unplugged: return "Débranché"
-        case .charging: return "En charge"
-        case .full: return "Pleine"
-        @unknown default: return "Inconnu"
-        }
+        try? metadataContent.write(to: metadataURL, atomically: true, encoding: .utf8)
+        return metadataURL
     }
 }
 
 // ============================================================================
-// 🧠 SECTION 7: ANALYSEUR INTELLIGENT (AnalysisManager)
+// 🧠 SECTION 7: MANAGER ANALYSE (AnalysisManager)
+// Description : Gère l'envoi des données à ACRCloud pour reconnaissance musicale.
 // ============================================================================
+
 class AnalysisManager: NSObject, ObservableObject {
     let acrClient: ACRCloudRecognition
     @Published var analysisProgress: Double = 0.0
@@ -946,7 +820,7 @@ class AnalysisManager: NSObject, ObservableObject {
         config.protocol = "https"
         self.acrClient = ACRCloudRecognition(config: config)
     }
-    
+
     /** Gère le flux d'analyse complet : lecture de fichiers, détection des pics, et reconnaissance ACRCloud. */
     func analyzeSessionComplete(audioURL: URL, sensorsURL: URL) async -> [HighlightMoment] {
         
@@ -1035,7 +909,7 @@ class AnalysisManager: NSObject, ObservableObject {
             if selectedPeaks.count >= 10 { break }
             
             // Le test utilise maintenant le champ '.t' (timestamp)
-            let isTooClose = selectedPeaks.contains { abs($0.t - window.t) < minSpacing }
+            let isTooClose = selectedPeaks.contains { abs($0.t - window.t) < 120 } // 120s minSpacing
             if !isTooClose {
                 selectedPeaks.append(window)
             }
