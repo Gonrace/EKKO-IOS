@@ -546,7 +546,8 @@ class AudioRecorderManager: NSObject, AVAudioRecorderDelegate {
 }
 
 // ============================================================================
-// 📊 SECTION 6: MANAGER CAPTEURS
+// 📊 SECTION 6: MANAGER CAPTEURS (MotionManager)
+// Description : Enregistre Mouvements + Audio + PROXIMITÉ dans un CSV.
 // ============================================================================
 
 class MotionManager {
@@ -556,10 +557,14 @@ class MotionManager {
     private var batteryLevelStart: Float = 0.0
     private var startTime: Date = Date()
     private var fileURL: URL?
-    
+
     func startUpdates(audioRecorder: AudioRecorderManager) {
-        csvString = "timestamp,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,attitude_roll,attitude_pitch,attitude_yaw,gravity_x,gravity_y,gravity_z,audio_power_db\n"
+        // 1. MISE A JOUR DU HEADER CSV : Ajout de la colonne ",proximity" à la fin
+        csvString = "timestamp,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,attitude_roll,attitude_pitch,attitude_yaw,gravity_x,gravity_y,gravity_z,audio_power_db,proximity\n"
         dataBuffer.removeAll()
+        
+        // 2. ACTIVATION DU CAPTEUR DE PROXIMITÉ
+        UIDevice.current.isProximityMonitoringEnabled = true
         
         UIDevice.current.isBatteryMonitoringEnabled = true
         self.batteryLevelStart = UIDevice.current.batteryLevel
@@ -575,13 +580,24 @@ class MotionManager {
             let audioPower = audioRecorder.getCurrentPower()
             let timestamp = Date().timeIntervalSince1970
             
-            let newLine = "\(timestamp),\(data.userAcceleration.x),\(data.userAcceleration.y),\(data.userAcceleration.z),\(data.rotationRate.x),\(data.rotationRate.y),\(data.rotationRate.z),\(data.attitude.roll),\(data.attitude.pitch),\(data.attitude.yaw),\(data.gravity.x),\(data.gravity.y),\(data.gravity.z),\(audioPower)\n"
+            // 3. LECTURE DE LA PROXIMITÉ
+            // Convertit le Booléen en Entier : 1 = Proche (Poche/Caché), 0 = Loin (Main/Visible)
+            let proximityState = UIDevice.current.proximityState ? 1 : 0
+            
+            // Ajout de la variable à la fin de la ligne
+            let newLine = "\(timestamp),\(data.userAcceleration.x),\(data.userAcceleration.y),\(data.userAcceleration.z),\(data.rotationRate.x),\(data.rotationRate.y),\(data.rotationRate.z),\(data.attitude.roll),\(data.attitude.pitch),\(data.attitude.yaw),\(data.gravity.x),\(data.gravity.y),\(data.gravity.z),\(audioPower),\(proximityState)\n"
+            
             self.dataBuffer.append(newLine)
         }
     }
     
     func stopAndSaveToFile() -> URL? {
         mm.stopDeviceMotionUpdates()
+        
+        // 4. DÉSACTIVATION DU CAPTEUR (Pour économiser la batterie)
+        UIDevice.current.isProximityMonitoringEnabled = false
+        
+        // Écriture finale
         csvString.append(contentsOf: dataBuffer.joined())
         dataBuffer.removeAll()
         
@@ -596,16 +612,16 @@ class MotionManager {
         let duration = endTime.timeIntervalSince(startTime)
         
         let metadataContent = """
-    METADATA EKKO
-    ------------------
-    App Version: \(ContentView.appVersionInfo)
-    Date: \(Date())
-    Début Session: \(startTime)
-    Fin Session: \(endTime)
-    Durée: \(String(format: "%.2f", duration / 60)) min
-    Batterie Début: \(self.batteryLevelStart * 100)%
-    Batterie Fin: \(UIDevice.current.batteryLevel * 100)%
-    """
+        METADATA EKKO
+        ------------------
+        App Version: \(ContentView.appVersionInfo)
+        Date: \(Date())
+        Début Session: \(startTime)
+        Fin Session: \(endTime)
+        Durée: \(String(format: "%.2f", duration / 60)) min
+        Batterie Début: \(self.batteryLevelStart * 100)%
+        Batterie Fin: \(UIDevice.current.batteryLevel * 100)%
+        """
         
         let docPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let metadataURL = docPath.appendingPathComponent("metadata_\(Int(Date().timeIntervalSince1970)).txt")
