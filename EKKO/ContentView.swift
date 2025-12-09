@@ -43,7 +43,6 @@ struct SavedMoment: Codable, Identifiable {
 class HistoryManager {
     static let shared = HistoryManager()
     private let fileName = "party_history.json"
-    private let errorManager = ErrorManager()
     
     func getHistoryFileURL() -> URL? {
         guard let docPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
@@ -57,16 +56,16 @@ class HistoryManager {
         history.insert(report, at: 0)
         
         guard let url = getHistoryFileURL() else {
-            errorManager.handle(.fileWriteFailed("history.json - URL invalide"))
-            return
-        }
-        
+                    // Utilise le Singleton et le cas .fileSystem
+                    ErrorManager.shared.handle(.fileSystem("history.json - URL invalide"))
+                    return
+                }
         do {
             let data = try JSONEncoder().encode(history)
             try data.write(to: url)
             print("✅ Rapport sauvegardé")
         } catch {
-            errorManager.handle(.fileWriteFailed("history.json - \(error.localizedDescription)"))
+            ErrorManager.shared.handle(.fileSystem("history.json - \(error.localizedDescription)"))
         }
     }
     
@@ -81,7 +80,6 @@ class HistoryManager {
             print("✅ Historique chargé : \(history.count) rapports")
             return history
         } catch {
-            // Fichier n'existe pas encore (première utilisation) = normal
             if (error as NSError).code != NSFileReadNoSuchFileError {
                 print("⚠️ Erreur lecture historique : \(error)")
             }
@@ -93,7 +91,7 @@ class HistoryManager {
         history.remove(atOffsets: offsets)
         
         guard let url = getHistoryFileURL() else {
-            errorManager.handle(.fileWriteFailed("history.json - URL invalide"))
+            ErrorManager.shared.handle(.fileSystem("history.json - URL invalide"))
             return
         }
         
@@ -102,7 +100,7 @@ class HistoryManager {
             try data.write(to: url)
             print("✅ Rapport(s) supprimé(s)")
         } catch {
-            errorManager.handle(.fileWriteFailed("history.json - \(error.localizedDescription)"))
+            ErrorManager.shared.handle(.fileSystem("history.json - \(error.localizedDescription)"))
         }
     }
 }
@@ -124,7 +122,7 @@ struct ContentView: View {
     @State private var statusText: String = "Prêt à capturer la soirée."
     @State private var savedFiles: [URL] = []
     
-    @StateObject private var errorManager = ErrorManager()
+    @StateObject private var errorManager = ErrorManager.shared
     
     @State private var history: [PartyReport] = []
     @State private var highlightMoments: [HighlightMoment] = []
@@ -234,17 +232,19 @@ struct ContentView: View {
                     Button("Arrêter sans sauvegarder", role: .destructive) { cancelSession() }
                 } message: { Text("Moins de 30 secondes ? C'est trop court.") }
                 .alert(errorManager.currentError?.localizedDescription ?? "Erreur",
-                        isPresented: $errorManager.showError,
-                        presenting: errorManager.currentError) { error in
-                    Button("Compris") {
-                        errorManager.showError = false
-                    }
-                } message: { error in
-                    if let suggestion = error.recoverySuggestion {
-                        Text(suggestion)
-                    }
+                    isPresented: $errorManager.showError,
+                    presenting: errorManager.currentError) { error in
+                        // Affiche un bouton différent si l'erreur est critique
+                        if error.severity == .critical {
+                            Button("Quitter l'application", role: .destructive) { exit(0) }
+                        } else {
+                            Button("Compris") { errorManager.showError = false }
+                        }
+                    } message: { error in
+                        if let suggestion = error.recoverySuggestion {
+                            Text(suggestion)
+                        }
                 }
-
             }
             .navigationBarHidden(true)
         }
@@ -287,7 +287,7 @@ struct ContentView: View {
         let audioSegments = audioRecorder.stopRecording()
         
         guard let sensorsURL = motionManager.stopAndSaveToFile() else {
-            errorManager.handle(.sensorDataFailed)
+            errorManager.handle(.sensor(.dataWriteFailed))
             statusText = "❌ Erreur de sauvegarde."
             currentState = .idle
             return
@@ -299,7 +299,7 @@ struct ContentView: View {
         let finalAudioURL = mergedAudioURL ?? audioSegments.first
         
         guard let validAudioURL = finalAudioURL else {
-            errorManager.handle(.audioMergeFailed)
+            errorManager.handle(.audio(.mergeFailed))
             statusText = "❌ Erreur Audio critique."
             currentState = .idle
             return
@@ -321,8 +321,7 @@ struct ContentView: View {
             let moments = await analysisManager.analyzeSessionComplete(
                 audioURL: validAudioURL,
                 sensorsURL: sensorsURL,
-                validAudioRanges: rangesToUse,
-                errorManager: errorManager
+                validAudioRanges: rangesToUse
             )
             
             let validMoments = moments.map { SavedMoment(timestamp: $0.timestamp, title: $0.song?.title ?? "Inconnu", artist: $0.song?.artist ?? "") }
@@ -336,7 +335,7 @@ struct ContentView: View {
                 try reportData.write(to: tempReportURL)
                 filesToZip.append(tempReportURL)
             } catch {
-                errorManager.logWarning("Impossible de sauvegarder le rapport JSON : \(error)")
+                errorManager.handle(.fileSystem("Sauvegarde rapport JSON temporaire : \(error.localizedDescription)"))
             }
             
             await MainActor.run {
@@ -397,7 +396,7 @@ struct ContentView: View {
         let fm = FileManager.default
         
         guard let firstAudioURL = files.first(where: { $0.pathExtension == "wav" || $0.pathExtension == "m4a" }) else {
-            errorManager.handle(.zipCreationFailed("Aucun fichier audio trouvé"))
+            errorManager.handle(.fileSystem("ZIP : Aucun fichier audio source trouvé"))
             return
         }
         
@@ -425,7 +424,7 @@ struct ContentView: View {
         let newZipName = "EKKO\(timePart)_\(datePart)_\(durationString).zip"
         
         guard let cachePath = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
-            errorManager.handle(.zipCreationFailed("Cache inaccessible"))
+            errorManager.handle(.fileSystem("ZIP : Cache inaccessible"));
             return
         }
         
@@ -451,8 +450,7 @@ struct ContentView: View {
             }
             
         } catch {
-            errorManager.handle(.zipCreationFailed(error.localizedDescription))
-        }
+            errorManager.handle(.fileSystem("ZIP : \(error.localizedDescription)"))        }
         
         loadSavedFiles()
     }
@@ -464,8 +462,7 @@ struct ContentView: View {
                 try fm.removeItem(at: fileURL)
                 print("✅ Fichier supprimé : \(fileURL.lastPathComponent)")
             } catch {
-                errorManager.handle(.fileWriteFailed("Suppression de \(fileURL.lastPathComponent) - \(error.localizedDescription)"))
-            }
+                errorManager.handle(.fileSystem("Suppression de \(fileURL.lastPathComponent) - \(error.localizedDescription)"))            }
         }
         loadSavedFiles()
     }
@@ -607,7 +604,7 @@ class AudioRecorderManager: NSObject, AVAudioRecorderDelegate {
             print("✅ Nouvelle session audio: \(filename)")
             return newURL
         } catch {
-            print("❌ Erreur REC: \(error)")
+            ErrorManager.shared.handle(.audio(.recordingFailed(underlying: error)))
             return nil
         }
     }
@@ -687,7 +684,7 @@ class MotionManager {
             self.fileHandle = try FileHandle(forWritingTo: url)
             self.fileHandle?.seekToEndOfFile()
         } catch {
-            print("❌ Erreur critique création CSV: \(error)")
+            ErrorManager.shared.handle(.sensor(.criticalFileSetup))
             return
         }
 
@@ -772,7 +769,7 @@ class MotionManager {
                 try metadataContent.write(to: metadataURL, atomically: true, encoding: .utf8)
                 return metadataURL
             } catch {
-                print("❌ Erreur création metadata: \(error)")
+                ErrorManager.shared.handle(.fileSystem("Création metadata : \(error.localizedDescription)"))
                 return nil
             }
         }
@@ -852,7 +849,7 @@ class AnalysisManager: NSObject, ObservableObject {
     }
     
     // --- ANALYSE PRINCIPALE ---
-    func analyzeSessionComplete(audioURL: URL, sensorsURL: URL, validAudioRanges: [(start: Double, end: Double)], errorManager: ErrorManager) async -> [HighlightMoment] {
+    func analyzeSessionComplete(audioURL: URL, sensorsURL: URL, validAudioRanges: [(start: Double, end: Double)]) async -> [HighlightMoment] {
         
         guard FileManager.default.fileExists(atPath: audioURL.path),
               FileManager.default.fileExists(atPath: sensorsURL.path) else { return [] }
