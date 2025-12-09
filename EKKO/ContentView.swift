@@ -1,8 +1,12 @@
 import SwiftUI
 import CoreMotion
 import AVFoundation
-import ZIPFoundation
+import ZIPFoundation // Assure-toi d'avoir ajouté le package ZIPFoundation
 import Combine
+import UIKit
+
+// Note: Ce code suppose que le SDK ACRCloud est correctement linké (Bridge Header si Obj-C)
+// et que StreamReader.swift et ErrorManager.swift sont présents dans le projet.
 
 // ============================================================================
 // 🎯 SECTION 1: MODÈLES DE DONNÉES
@@ -41,28 +45,67 @@ struct SavedMoment: Codable, Identifiable {
 class HistoryManager {
     static let shared = HistoryManager()
     private let fileName = "party_history.json"
+    private let errorManager = ErrorManager()
     
     func getHistoryFileURL() -> URL? {
-        guard let docPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        guard let docPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return nil
+        }
         return docPath.appendingPathComponent(fileName)
     }
     
     func saveReport(_ report: PartyReport) {
         var history = loadHistory()
         history.insert(report, at: 0)
-        guard let url = getHistoryFileURL(), let data = try? JSONEncoder().encode(history) else { return }
-        try? data.write(to: url)
+        
+        guard let url = getHistoryFileURL() else {
+            errorManager.handle(.fileWriteFailed("history.json - URL invalide"))
+            return
+        }
+        
+        do {
+            let data = try JSONEncoder().encode(history)
+            try data.write(to: url)
+            print("✅ Rapport sauvegardé")
+        } catch {
+            errorManager.handle(.fileWriteFailed("history.json - \(error.localizedDescription)"))
+        }
     }
     
     func loadHistory() -> [PartyReport] {
-        guard let url = getHistoryFileURL(), let data = try? Data(contentsOf: url) else { return [] }
-        return (try? JSONDecoder().decode([PartyReport].self, from: data)) ?? []
+        guard let url = getHistoryFileURL() else {
+            return []
+        }
+        
+        do {
+            let data = try Data(contentsOf: url)
+            let history = try JSONDecoder().decode([PartyReport].self, from: data)
+            print("✅ Historique chargé : \(history.count) rapports")
+            return history
+        } catch {
+            // Fichier n'existe pas encore (première utilisation) = normal
+            if (error as NSError).code != NSFileReadNoSuchFileError {
+                print("⚠️ Erreur lecture historique : \(error)")
+            }
+            return []
+        }
     }
     
     func deleteReport(at offsets: IndexSet, from history: inout [PartyReport]) {
         history.remove(atOffsets: offsets)
-        guard let url = getHistoryFileURL(), let data = try? JSONEncoder().encode(history) else { return }
-        try? data.write(to: url)
+        
+        guard let url = getHistoryFileURL() else {
+            errorManager.handle(.fileWriteFailed("history.json - URL invalide"))
+            return
+        }
+        
+        do {
+            let data = try JSONEncoder().encode(history)
+            try data.write(to: url)
+            print("✅ Rapport(s) supprimé(s)")
+        } catch {
+            errorManager.handle(.fileWriteFailed("history.json - \(error.localizedDescription)"))
+        }
     }
 }
 
@@ -82,6 +125,8 @@ struct ContentView: View {
     @State private var currentState: AppState = .idle
     @State private var statusText: String = "Prêt à capturer la soirée."
     @State private var savedFiles: [URL] = []
+    
+    @StateObject private var errorManager = ErrorManager()
     
     @State private var history: [PartyReport] = []
     @State private var highlightMoments: [HighlightMoment] = []
@@ -120,7 +165,7 @@ struct ContentView: View {
                     .padding().background(Color.white.opacity(0.1)).cornerRadius(10).padding(.horizontal)
                     
                     Text(audioRecorder.wasInterrupted ?
-                         "⚠️ REPRENDRE L'ENREGISTREMENT : L'audio a été coupé par le système." :
+                        "⚠️ REPRENDRE L'ENREGISTREMENT : L'audio a été coupé par le système." :
                             statusText)
                     .font(.headline)
                     .multilineTextAlignment(.center)
@@ -190,6 +235,18 @@ struct ContentView: View {
                     Button("Continuer", role: .cancel) {}
                     Button("Arrêter sans sauvegarder", role: .destructive) { cancelSession() }
                 } message: { Text("Moins de 30 secondes ? C'est trop court.") }
+                .alert(errorManager.currentError?.localizedDescription ?? "Erreur",
+                        isPresented: $errorManager.showError,
+                        presenting: errorManager.currentError) { error in
+                    Button("Compris") {
+                        errorManager.showError = false
+                    }
+                } message: { error in
+                    if let suggestion = error.recoverySuggestion {
+                        Text(suggestion)
+                    }
+                }
+
             }
             .navigationBarHidden(true)
         }
@@ -226,141 +283,192 @@ struct ContentView: View {
             audioRecorder.resumeAfterForeground()
         }
     }
+    
     func stopAndAnalyze() async {
-            timerSubscription?.cancel()
-            let audioSegments = audioRecorder.stopRecording()
+        timerSubscription?.cancel()
+        let audioSegments = audioRecorder.stopRecording()
+        
+        guard let sensorsURL = motionManager.stopAndSaveToFile() else {
+            errorManager.handle(.sensorDataFailed)
+            statusText = "❌ Erreur de sauvegarde."
+            currentState = .idle
+            return
+        }
+        
+        await MainActor.run { self.statusText = "Fusion audio en cours..." }
+        
+        let (mergedAudioURL, validRanges) = await analysisManager.mergeAudioFiles(urls: audioSegments)
+        let finalAudioURL = mergedAudioURL ?? audioSegments.first
+        
+        guard let validAudioURL = finalAudioURL else {
+            errorManager.handle(.audioMergeFailed)
+            statusText = "❌ Erreur Audio critique."
+            currentState = .idle
+            return
+        }
+        
+        let metadataURL = motionManager.createMetadataFile(startTime: startTime ?? Date())
+        var filesToZip = [validAudioURL, sensorsURL]
+        if let meta = metadataURL { filesToZip.append(meta) }
+        
+        if isFastReportEnabled {
+            await MainActor.run {
+                self.currentState = .analyzing
+                self.statusText = "Analyse..."
+            }
+            try? await Task.sleep(nanoseconds: 500_000_000)
             
-            guard let sensorsURL = motionManager.stopAndSaveToFile() else {
-                statusText = "❌ Erreur de sauvegarde."
-                currentState = .idle
-                return
+            let rangesToUse = mergedAudioURL != nil ? validRanges : [(0.0, 100000.0)]
+            
+            let moments = await analysisManager.analyzeSessionComplete(
+                audioURL: validAudioURL,
+                sensorsURL: sensorsURL,
+                validAudioRanges: rangesToUse,
+                errorManager: errorManager
+            )
+            
+            let validMoments = moments.map { SavedMoment(timestamp: $0.timestamp, title: $0.song?.title ?? "Inconnu", artist: $0.song?.artist ?? "") }
+            let finalDuration = Date().timeIntervalSince(startTime ?? Date())
+            let report = PartyReport(id: UUID(), date: Date(), duration: finalDuration, moments: validMoments)
+            HistoryManager.shared.saveReport(report)
+            
+            do {
+                let reportData = try JSONEncoder().encode(report)
+                let tempReportURL = FileManager.default.temporaryDirectory.appendingPathComponent("report_\(Int(Date().timeIntervalSince1970)).json")
+                try reportData.write(to: tempReportURL)
+                filesToZip.append(tempReportURL)
+            } catch {
+                errorManager.logWarning("Impossible de sauvegarder le rapport JSON : \(error)")
             }
             
-            await MainActor.run { self.statusText = "Fusion audio en cours..." }
-            
-            // --- MODIFICATION : Récupérer le tuple (URL, Plages) ---
-            let (mergedAudioURL, validRanges) = await analysisManager.mergeAudioFiles(urls: audioSegments)
-            let finalAudioURL = mergedAudioURL ?? audioSegments.first
-            
-            guard let validAudioURL = finalAudioURL else {
-                statusText = "❌ Erreur Audio critique."
-                currentState = .idle
-                return
-            }
-            
-            let metadataURL = motionManager.createMetadataFile(startTime: startTime ?? Date())
-            var filesToZip = [validAudioURL, sensorsURL]
-            if let meta = metadataURL { filesToZip.append(meta) }
-            
-            if isFastReportEnabled {
-                await MainActor.run {
-                    self.currentState = .analyzing
-                    self.statusText = "Analyse..."
-                }
-                try? await Task.sleep(nanoseconds: 500_000_000)
+            await MainActor.run {
+                self.highlightMoments = moments
+                self.history = HistoryManager.shared.loadHistory()
+                self.statusText = "Voici votre Top Kiff !"
+                self.currentState = .fastReport
                 
-                // --- MODIFICATION : Passer les plages valides ---
-                // Si mergedAudioURL est nil (échec fusion), on suppose que tout le fichier est valide (fallback)
-                let rangesToUse = mergedAudioURL != nil ? validRanges : [(0.0, 100000.0)]
+                compressAndSave(files: filesToZip)
                 
-                let moments = await analysisManager.analyzeSessionComplete(audioURL: validAudioURL, sensorsURL: sensorsURL, validAudioRanges: rangesToUse)
-                
-                let validMoments = moments.map { SavedMoment(timestamp: $0.timestamp, title: $0.song?.title ?? "Inconnu", artist: $0.song?.artist ?? "") }
-                let finalDuration = Date().timeIntervalSince(startTime ?? Date())
-                let report = PartyReport(id: UUID(), date: Date(), duration: finalDuration, moments: validMoments)
-                HistoryManager.shared.saveReport(report)
-                
-                if let reportData = try? JSONEncoder().encode(report) {
-                    let tempReportURL = FileManager.default.temporaryDirectory.appendingPathComponent("report_\(Int(Date().timeIntervalSince1970)).json")
-                    try? reportData.write(to: tempReportURL)
-                    filesToZip.append(tempReportURL)
-                }
-                
-                await MainActor.run {
-                    self.highlightMoments = moments
-                    self.history = HistoryManager.shared.loadHistory()
-                    self.statusText = "Voici votre Top Kiff !"
-                    self.currentState = .fastReport
-                    
-                    compressAndSave(files: filesToZip)
-                    
-                    if mergedAudioURL != nil {
-                        for segment in audioSegments { try? FileManager.default.removeItem(at: segment) }
+                if mergedAudioURL != nil {
+                    for segment in audioSegments {
+                        do {
+                            try FileManager.default.removeItem(at: segment)
+                        } catch {
+                            errorManager.logWarning("Segment non supprimé : \(segment.lastPathComponent)")
+                        }
                     }
                 }
-            } else {
-                compressAndSave(files: filesToZip)
-                await MainActor.run {
-                    self.statusText = "Sauvegardé."
-                    self.currentState = .idle
-                    self.loadSavedFiles()
-                    if mergedAudioURL != nil {
-                        for segment in audioSegments { try? FileManager.default.removeItem(at: segment) }
+            }
+        } else {
+            compressAndSave(files: filesToZip)
+            await MainActor.run {
+                self.statusText = "Sauvegardé."
+                self.currentState = .idle
+                self.loadSavedFiles()
+                if mergedAudioURL != nil {
+                    for segment in audioSegments {
+                        do {
+                            try FileManager.default.removeItem(at: segment)
+                        } catch {
+                            errorManager.logWarning("Segment non supprimé : \(segment.lastPathComponent)")
+                        }
                     }
                 }
             }
         }
+    }
+
     func cancelSession() {
         timerSubscription?.cancel()
         let segs = audioRecorder.stopRecording()
-        for s in segs { try? FileManager.default.removeItem(at: s) }
+        for s in segs {
+            do {
+                try FileManager.default.removeItem(at: s)
+            } catch {
+                errorManager.logWarning("Impossible de supprimer le segment : \(s.lastPathComponent)")
+            }
+        }
         _ = motionManager.stopAndSaveToFile()
         currentState = .idle
         statusText = "Session annulée."
     }
     
-    // --- GESTION FICHIERS ZIP & TAGS ---
+    // --- GESTION FICHIERS ZIP ---
     
     func compressAndSave(files: [URL]) {
         let fm = FileManager.default
-        // On cherche le fichier audio principal
-        guard let firstAudioURL = files.first(where: { $0.pathExtension == "wav" || $0.pathExtension == "m4a" }) else { return }
         
-        // CORRECTION ICI : On utilise Double() pour le parsing du timestamp
+        guard let firstAudioURL = files.first(where: { $0.pathExtension == "wav" || $0.pathExtension == "m4a" }) else {
+            errorManager.handle(.zipCreationFailed("Aucun fichier audio trouvé"))
+            return
+        }
+        
         let originalFilename = firstAudioURL.lastPathComponent
         let prefixToFind = "rec_seg_"
         
         var startDate = Date()
-        // Tentative de parsing de la date depuis le nom du fichier
+        
         if let startRange = originalFilename.range(of: prefixToFind)?.upperBound,
            let endRange = originalFilename[startRange...].range(of: ".")?.lowerBound,
-           let timestamp = Double(String(originalFilename[startRange..<endRange])) { // CORRECTION: Double au lieu de TimeInterval
+           let timestamp = Double(String(originalFilename[startRange..<endRange])) {
             startDate = Date(timeIntervalSince1970: timestamp)
-        } else {
-            // Si le parsing échoue (ex: fichier merged), on utilise la date actuelle
-            startDate = Date()
         }
         
         let durationSeconds = Date().timeIntervalSince(startDate)
-        let timeFormatter = DateFormatter(); timeFormatter.dateFormat = "HHmm"
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HHmm"
         let timePart = timeFormatter.string(from: startDate)
         let totalMinutes = Int(durationSeconds / 60.0)
         let durationString = String(format: "%dh%02dm", totalMinutes / 60, totalMinutes % 60)
-        let dateFormatter = DateFormatter(); dateFormatter.dateFormat = "yyyyMMdd"
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd"
         let datePart = dateFormatter.string(from: startDate)
         
         let newZipName = "EKKO\(timePart)_\(datePart)_\(durationString).zip"
         
-        guard let cachePath = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+        guard let cachePath = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            errorManager.handle(.zipCreationFailed("Cache inaccessible"))
+            return
+        }
+        
         let zipURL = cachePath.appendingPathComponent(newZipName)
-        try? fm.removeItem(at: zipURL)
         
         do {
+            try? fm.removeItem(at: zipURL)
+            
             let archive = try Archive(url: zipURL, accessMode: .create)
             for file in files {
                 try archive.addEntry(with: file.lastPathComponent, relativeTo: file.deletingLastPathComponent())
             }
+            
             print("✅ ZIP créé : \(newZipName)")
-            for file in files { try fm.removeItem(at: file) }
+            
+            // Suppression des fichiers sources
+            for file in files {
+                do {
+                    try fm.removeItem(at: file)
+                } catch {
+                    errorManager.logWarning("Impossible de supprimer \(file.lastPathComponent) : \(error)")
+                }
+            }
+            
         } catch {
-            print("❌ Erreur Zip: \(error)")
+            errorManager.handle(.zipCreationFailed(error.localizedDescription))
         }
+        
         loadSavedFiles()
     }
-    
     func deleteFiles(at offsets: IndexSet) {
         let fm = FileManager.default
-        offsets.map { savedFiles[$0] }.forEach { try? fm.removeItem(at: $0) }
+        for index in offsets {
+            let fileURL = savedFiles[index]
+            do {
+                try fm.removeItem(at: fileURL)
+                print("✅ Fichier supprimé : \(fileURL.lastPathComponent)")
+            } catch {
+                errorManager.handle(.fileWriteFailed("Suppression de \(fileURL.lastPathComponent) - \(error.localizedDescription)"))
+            }
+        }
         loadSavedFiles()
     }
     func loadSavedFiles() {
@@ -549,63 +657,100 @@ class AudioRecorderManager: NSObject, AVAudioRecorderDelegate {
 // 📊 SECTION 6: MANAGER CAPTEURS (MotionManager)
 // Description : Enregistre Mouvements + Audio + PROXIMITÉ dans un CSV.
 // ============================================================================
-
 class MotionManager {
     private let mm = CMMotionManager()
-    private var dataBuffer: [String] = []
-    private var csvString = ""
-    private var batteryLevelStart: Float = 0.0
-    private var startTime: Date = Date()
+    
+    // On ne garde plus TOUT l'historique, juste un petit tampon de 50 lignes (5 sec)
+    private var writeBuffer: String = ""
+    private var bufferCount = 0
+    private let bufferLimit = 50
+    
+    private var fileHandle: FileHandle?
     private var fileURL: URL?
 
+    // Pour le rapport final
+    private var batteryLevelStart: Float = 0.0
+    private var startTime: Date = Date()
+
     func startUpdates(audioRecorder: AudioRecorderManager) {
-        // 1. MISE A JOUR DU HEADER CSV : Ajout de la colonne ",proximity" à la fin
-        csvString = "timestamp,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,attitude_roll,attitude_pitch,attitude_yaw,gravity_x,gravity_y,gravity_z,audio_power_db,proximity\n"
-        dataBuffer.removeAll()
+        // 1. Préparation du fichier
+        let doc = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        self.fileURL = doc.appendingPathComponent("sensors_\(Int(Date().timeIntervalSince1970)).csv")
         
-        // 2. ACTIVATION DU CAPTEUR DE PROXIMITÉ
-        UIDevice.current.isProximityMonitoringEnabled = true
+        // 2. En-tête CSV
+        let header = "timestamp,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,attitude_roll,attitude_pitch,attitude_yaw,gravity_x,gravity_y,gravity_z,audio_power_db,proximity\n"
         
+        guard let url = fileURL else { return }
+        
+        // 3. Ouverture du "tuyau" vers le fichier (FileHandle)
+        do {
+            // On écrit l'en-tête (crée le fichier)
+            try header.write(to: url, atomically: true, encoding: .utf8)
+            // On ouvre le robinet pour ajouter des données à la suite
+            self.fileHandle = try FileHandle(forWritingTo: url)
+            self.fileHandle?.seekToEndOfFile()
+        } catch {
+            print("❌ Erreur critique création CSV: \(error)")
+            return
+        }
+
+        // 4. Initialisation Capteurs
         UIDevice.current.isBatteryMonitoringEnabled = true
         self.batteryLevelStart = UIDevice.current.batteryLevel
         self.startTime = Date()
         
-        let doc = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        self.fileURL = doc.appendingPathComponent("sensors_\(Int(Date().timeIntervalSince1970)).csv")
+        // Activation Proximité
+        UIDevice.current.isProximityMonitoringEnabled = true
         
-        mm.deviceMotionUpdateInterval = 0.1
-        mm.startDeviceMotionUpdates(to: .main) { (deviceMotion, error) in
-            guard let data = deviceMotion else { return }
+        mm.deviceMotionUpdateInterval = 0.1 // 10 Hz
+        
+        mm.startDeviceMotionUpdates(to: .main) { [weak self] (deviceMotion, error) in
+            guard let self = self, let data = deviceMotion else { return }
             
             let audioPower = audioRecorder.getCurrentPower()
             let timestamp = Date().timeIntervalSince1970
+            let proximity = UIDevice.current.proximityState ? 1 : 0
             
-            // 3. LECTURE DE LA PROXIMITÉ
-            // Convertit le Booléen en Entier : 1 = Proche (Poche/Caché), 0 = Loin (Main/Visible)
-            let proximityState = UIDevice.current.proximityState ? 1 : 0
+            // 5. Création de la ligne
+            let line = "\(timestamp),\(data.userAcceleration.x),\(data.userAcceleration.y),\(data.userAcceleration.z),\(data.rotationRate.x),\(data.rotationRate.y),\(data.rotationRate.z),\(data.attitude.roll),\(data.attitude.pitch),\(data.attitude.yaw),\(data.gravity.x),\(data.gravity.y),\(data.gravity.z),\(audioPower),\(proximity)\n"
             
-            // Ajout de la variable à la fin de la ligne
-            let newLine = "\(timestamp),\(data.userAcceleration.x),\(data.userAcceleration.y),\(data.userAcceleration.z),\(data.rotationRate.x),\(data.rotationRate.y),\(data.rotationRate.z),\(data.attitude.roll),\(data.attitude.pitch),\(data.attitude.yaw),\(data.gravity.x),\(data.gravity.y),\(data.gravity.z),\(audioPower),\(proximityState)\n"
+            // 6. Ajout au petit tampon
+            self.writeBuffer.append(line)
+            self.bufferCount += 1
             
-            self.dataBuffer.append(newLine)
+            // 7. Flush sur le disque tous les 50 échantillons (5 secondes)
+            if self.bufferCount >= self.bufferLimit {
+                self.flushToDisk()
+            }
         }
+    }
+    
+    // Fonction privée pour vider le tampon
+    private func flushToDisk() {
+        if let data = writeBuffer.data(using: .utf8) {
+            // Écriture physique
+            try? fileHandle?.write(contentsOf: data)
+        }
+        // Reset du tampon
+        writeBuffer = ""
+        bufferCount = 0
     }
     
     func stopAndSaveToFile() -> URL? {
         mm.stopDeviceMotionUpdates()
-        
-        // 4. DÉSACTIVATION DU CAPTEUR (Pour économiser la batterie)
         UIDevice.current.isProximityMonitoringEnabled = false
         
-        // Écriture finale
-        csvString.append(contentsOf: dataBuffer.joined())
-        dataBuffer.removeAll()
+        // 8. IMPORTANT : Écrire ce qui reste dans le tampon avant de fermer
+        flushToDisk()
         
-        guard let url = fileURL else { return nil }
-        try? csvString.write(to: url, atomically: true, encoding: .utf8)
-        return url
+        // Fermeture propre du fichier
+        try? fileHandle?.close()
+        fileHandle = nil
+        
+        return fileURL
     }
     
+    // REMPLACER LA FONCTION createMetadataFile EXISTANTE PAR CELLE-CI :
     func createMetadataFile(startTime: Date) -> URL? {
         UIDevice.current.isBatteryMonitoringEnabled = true
         let endTime = Date()
@@ -624,14 +769,20 @@ class MotionManager {
         """
         
         let docPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let metadataURL = docPath.appendingPathComponent("metadata_\(Int(Date().timeIntervalSince1970)).txt")
-        try? metadataContent.write(to: metadataURL, atomically: true, encoding: .utf8)
-        return metadataURL
-    }
+            let metadataURL = docPath.appendingPathComponent("metadata_\(Int(Date().timeIntervalSince1970)).txt")
+            
+            do {
+                try metadataContent.write(to: metadataURL, atomically: true, encoding: .utf8)
+                return metadataURL
+            } catch {
+                print("❌ Erreur création metadata: \(error)")
+                return nil
+            }
+        }
 }
 
 // ============================================================================
-// 🧠 SECTION 7: MANAGER ANALYSE
+// 🧠 SECTION 7: MANAGER ANALYSE (CORRIGÉE)
 // ============================================================================
 
 @MainActor
@@ -641,85 +792,60 @@ class AnalysisManager: NSObject, ObservableObject {
     
     override init() {
         let config = ACRCloudConfig()
-        // --- VOS CLES ---
-        config.host = "identify-eu-west-1.acrcloud.com"
-        config.accessKey = "41eb0dc8541f8a793ebe5f402befc364"
-        config.accessSecret = "h0igyw66jaOPgoPFskiGes1XUbzQbYQ3vpVzurgT"
+        let info = Bundle.main.infoDictionary
+        config.host = info?["ACRHost"] as? String ?? ""
+        config.accessKey = info?["ACRAccessKey"] as? String ?? ""
+        config.accessSecret = info?["ACRSecret"] as? String ?? ""
+        
         config.recMode = rec_mode_remote
-        config.requestTimeout = 10
+        config.requestTimeout = 25 // Augmenté car on envoie 20s d'audio
         config.protocol = "https"
         self.acrClient = ACRCloudRecognition(config: config)
     }
     
-    // --- MODIFICATION 1 : La fusion renvoie aussi les plages valides ---
-    /// Fusionne les audios et retourne l'URL + les intervalles où l'audio existe vraiment (en secondes relatives).
-    // Dans class AnalysisManager :
-
-        func mergeAudioFiles(urls: [URL]) async -> (URL?, [(start: Double, end: Double)]) {
-            guard !urls.isEmpty else { return (nil, []) }
-            
-            // Cas fichier unique : on renvoie le fichier et une plage complète
-            if urls.count == 1 {
-                let asset = AVURLAsset(url: urls.first!)
-                // Correction ambiguïté : on précise le type CMTime
-                let duration: CMTime = (try? await asset.load(.duration)) ?? .zero
-                return (urls.first, [(0, duration.seconds)])
-            }
-            
-            let composition = AVMutableComposition()
-            guard let compositionTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return (nil, []) }
-            
-            // Correction optionnels : on utilise ?? 0 pour le tri
-            let sortedURLs = urls.sorted { (extractTimestamp(from: $0) ?? 0) < (extractTimestamp(from: $1) ?? 0) }
-            
-            guard let firstFile = sortedURLs.first,
-                  let startTimeBase = extractTimestamp(from: firstFile) else { return (nil, []) }
-            
-            var validRanges: [(start: Double, end: Double)] = []
-            
-            print("🧩 Fusion de \(sortedURLs.count) segments...")
-            
-            for url in sortedURLs {
-                let asset = AVURLAsset(url: url)
-                do {
-                    // CORRECTION AMBIGUÏTÉ 1 : On dit explicitement à Swift qu'on attend un tableau de pistes
-                    let tracks: [AVAssetTrack] = try await asset.load(.tracks)
-                    guard let track = tracks.first else { continue }
-                    
-                    // CORRECTION AMBIGUÏTÉ 2 : On dit explicitement qu'on attend un CMTime
-                    let duration: CMTime = try await asset.load(.duration)
-                    
-                    guard let fileTimestamp = extractTimestamp(from: url) else { continue }
-                    
-                    let timeOffset = fileTimestamp - startTimeBase
-                    let insertTime = CMTime(seconds: timeOffset, preferredTimescale: 44100)
-                    
-                    try compositionTrack.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: track, at: insertTime)
-                    
-                    // On enregistre la plage valide
-                    validRanges.append((start: timeOffset, end: timeOffset + duration.seconds))
-                    
-                } catch {
-                    print("⚠️ Erreur fusion segment: \(error)")
-                }
-            }
-            
-            let tempDir = FileManager.default.temporaryDirectory
-            let outputURL = tempDir.appendingPathComponent("merged_session_\(Int(Date().timeIntervalSince1970)).m4a")
-            try? FileManager.default.removeItem(at: outputURL)
-            
-            guard let exportSession = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else { return (nil, []) }
-            exportSession.outputURL = outputURL
-            exportSession.outputFileType = .m4a
-            await exportSession.export()
-            if exportSession.status == .completed {
-                print("✅ Fusion terminée")
-                // On renvoie l'URL ET les plages valides
-                return (outputURL, validRanges)
-            } else {
-                return (nil, [])
-            }
+    // --- FUSION AUDIO ---
+    func mergeAudioFiles(urls: [URL]) async -> (URL?, [(start: Double, end: Double)]) {
+        guard !urls.isEmpty else { return (nil, []) }
+        if urls.count == 1 {
+            let asset = AVURLAsset(url: urls.first!)
+            let duration: CMTime = (try? await asset.load(.duration)) ?? .zero
+            return (urls.first, [(0, duration.seconds)])
         }
+        
+        let composition = AVMutableComposition()
+        guard let compositionTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return (nil, []) }
+        
+        let sortedURLs = urls.sorted { (extractTimestamp(from: $0) ?? 0) < (extractTimestamp(from: $1) ?? 0) }
+        guard let firstFile = sortedURLs.first, let startTimeBase = extractTimestamp(from: firstFile) else { return (nil, []) }
+        
+        var validRanges: [(start: Double, end: Double)] = []
+        
+        for url in sortedURLs {
+            let asset = AVURLAsset(url: url)
+            do {
+                let tracks: [AVAssetTrack] = try await asset.load(.tracks)
+                guard let track = tracks.first else { continue }
+                let duration: CMTime = try await asset.load(.duration)
+                guard let fileTimestamp = extractTimestamp(from: url) else { continue }
+                
+                let timeOffset = fileTimestamp - startTimeBase
+                let insertTime = CMTime(seconds: timeOffset, preferredTimescale: 44100)
+                try compositionTrack.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: track, at: insertTime)
+                validRanges.append((start: timeOffset, end: timeOffset + duration.seconds))
+            } catch { print("⚠️ Erreur fusion: \(error)") }
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let outputURL = tempDir.appendingPathComponent("merged_session_\(Int(Date().timeIntervalSince1970)).m4a")
+        try? FileManager.default.removeItem(at: outputURL)
+        
+        guard let exportSession = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else { return (nil, []) }
+        exportSession.outputURL = outputURL
+        exportSession.outputFileType = .m4a
+        await exportSession.export()
+        
+        return exportSession.status == .completed ? (outputURL, validRanges) : (nil, [])
+    }
     
     private func extractTimestamp(from url: URL) -> Double? {
         let filename = url.lastPathComponent.replacingOccurrences(of: ".wav", with: "")
@@ -728,37 +854,39 @@ class AnalysisManager: NSObject, ObservableObject {
         return nil
     }
     
-    // --- MODIFICATION 2 : On prend en compte les plages valides ---
-    func analyzeSessionComplete(audioURL: URL, sensorsURL: URL, validAudioRanges: [(start: Double, end: Double)]) async -> [HighlightMoment] {
-        guard let audioData = try? Data(contentsOf: audioURL) else { return [] }
-        guard let csvString = try? String(contentsOf: sensorsURL, encoding: .utf8) else { return [] }
+    // --- ANALYSE PRINCIPALE ---
+    func analyzeSessionComplete(audioURL: URL, sensorsURL: URL, validAudioRanges: [(start: Double, end: Double)], errorManager: ErrorManager) async -> [HighlightMoment] {
         
-        let bytesPerSecond = 16000
-        let totalDuration = Double(audioData.count) / Double(bytesPerSecond)
-        let isShortSession = totalDuration < 600
+        guard FileManager.default.fileExists(atPath: audioURL.path),
+              FileManager.default.fileExists(atPath: sensorsURL.path) else { return [] }
         
-        // On passe les plages valides à l'algo de détection
-        let candidates = findSmartPeaks(csv: csvString, validAudioRanges: validAudioRanges)
+        let asset = AVURLAsset(url: audioURL)
+        let duration = try? await asset.load(.duration).seconds
+        let isShortSession = (duration ?? 0) < 600
+        
+        // 1. RECHERCHE DES PICS (Avec ta formule PartyPower sur 20s)
+        let candidates = findSmartPeaks(csvURL: sensorsURL, validAudioRanges: validAudioRanges)
+        print("🔍 \(candidates.count) moments 'PartyPower' identifiés.")
         
         var recognizedMoments: [HighlightMoment] = []
         let total = Double(candidates.count)
         
-        let asset = AVURLAsset(url: audioURL)
-        
+        // 2. RECONNAISSANCE ACRCLOUD
         for (index, candidate) in candidates.enumerated() {
-            await MainActor.run { self.analysisProgress = Double(index) / total }
+            await MainActor.run { self.analysisProgress = Double(index) / max(total, 1.0) }
             
             let timestamp = candidate.t
-            let score = candidate.score
+            let score = candidate.score // C'est ton PartyPower moyen
             
-            // Extraction audio (12s)
-            if let chunk = await extractAudioChunk(asset: asset, at: timestamp, duration: 12) {
-                let resultJSON = acrClient.recognize(chunk)
-                if let song = parseResult(resultJSON) {
-                    recognizedMoments.append(HighlightMoment(timestamp: timestamp, song: song, peakScore: score))
-                } else {
-                    // Même si pas reconnu, on garde le moment si le score est haut (optionnel)
-                    // recognizedMoments.append(HighlightMoment(timestamp: timestamp, song: nil, peakScore: score))
+            // 🔥 MODIFICATION : On extrait 20 secondes (au lieu de 12) pour coller à ta fenêtre
+            if let chunk = await extractAudioChunk(asset: asset, at: timestamp, duration: 20) {
+                if let resultJSON = acrClient.recognize(chunk) {
+                    if let song = parseResult(resultJSON) {
+                        recognizedMoments.append(HighlightMoment(timestamp: timestamp, song: song, peakScore: score))
+                        print("✅ Musique trouvée : \(song.title) (Score: \(Int(score)))")
+                    } else {
+                        print("⚠️ Musique non reconnue à \(Int(timestamp))s")
+                    }
                 }
             }
         }
@@ -769,77 +897,95 @@ class AnalysisManager: NSObject, ObservableObject {
     
     private func extractAudioChunk(asset: AVURLAsset, at time: TimeInterval, duration: Double) async -> Data? {
         guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else { return nil }
-        
         let startTime = CMTime(seconds: max(0, time), preferredTimescale: 44100)
-        let durationTime = CMTime(seconds: duration, preferredTimescale: 44100)
-        let range = CMTimeRange(start: startTime, duration: durationTime)
-        
-        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("chunk_\(UUID().uuidString).m4a")
-        
-        exportSession.outputURL = outputURL
+        let durationTime = CMTime(seconds: duration, preferredTimescale: 44100) // Sera 20s maintenant
+        exportSession.outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("chunk_\(UUID().uuidString).m4a")
         exportSession.outputFileType = .m4a
-        exportSession.timeRange = range
-        
+        exportSession.timeRange = CMTimeRange(start: startTime, duration: durationTime)
         await exportSession.export()
         
-        if exportSession.status == .completed {
-            let data = try? Data(contentsOf: outputURL)
-            try? FileManager.default.removeItem(at: outputURL)
+        if exportSession.status == .completed, let url = exportSession.outputURL {
+            let data = try? Data(contentsOf: url)
+            try? FileManager.default.removeItem(at: url)
             return data
         }
         return nil
     }
     
-    // --- MODIFICATION 3 : L'algo vérifie si l'audio existe ---
-    private func findSmartPeaks(csv: String, validAudioRanges: [(start: Double, end: Double)]) -> [(t: Double, score: Double)] {
-        let rows = csv.components(separatedBy: "\n").dropFirst()
-        var data: [(t: Double, mag: Double)] = []
-        for row in rows {
+    // --- ALGORITHME PARTY POWER (VERSION 20S) ---
+    private func findSmartPeaks(csvURL: URL, validAudioRanges: [(start: Double, end: Double)]) -> [(t: Double, score: Double)] {
+        guard let reader = StreamReader(path: csvURL.path) else { return [] }
+        
+        var data: [(t: Double, power: Double)] = []
+        var previousYaw: Double? = nil
+        
+        _ = reader.nextLine() // Skip header
+        
+        for row in reader {
             let cols = row.components(separatedBy: ",")
-            if cols.count >= 4, let t = Double(cols[0]), let x = Double(cols[1]), let y = Double(cols[2]), let z = Double(cols[3]) {
-                let mag = sqrt(x*x + y*y + z*z)
-                data.append((t, mag))
+            if cols.count >= 10,
+               let t = Double(cols[0]),
+               let ax = Double(cols[1]), let ay = Double(cols[2]), let az = Double(cols[3]),
+               let gx = Double(cols[4]), let gy = Double(cols[5]), let gz = Double(cols[6]),
+               let yaw = Double(cols[9]) {
+                
+                let accelMag = sqrt(ax*ax + ay*ay + az*az)
+                let gyroMag = sqrt(gx*gx + gy*gy + gz*gz)
+                
+                var yawChange = 0.0
+                if let prev = previousYaw {
+                    yawChange = abs(yaw - prev)
+                    if yawChange > 3.0 { yawChange = 0.0 }
+                }
+                previousYaw = yaw
+                
+                // FORMULE DU PARTY POWER INSTANTANÉ
+                let rawPartyPower = accelMag + (gyroMag * 15.0) + (yawChange * 50.0)
+                data.append((t, rawPartyPower))
             }
         }
+        reader.close()
+        
         guard !data.isEmpty else { return [] }
-        let startTime = data[0].t
-        let globalAverage = (data.map { $0.mag }.reduce(0, +) / Double(data.count)) + 0.001
+        
+        // FENÊTRE GLISSANTE 20 SECONDES
+        let windowSize = 200
+        let strideStep = 50 // ✅ RENOMMÉ pour éviter le conflit avec la fonction stride()
         
         var windows: [(t: Double, score: Double)] = []
-        let windowStep = 40 // ~4 sec
+        let startTime = data[0].t
         
-        if data.count > windowStep {
-            for i in stride(from: 0, to: data.count - windowStep, by: windowStep) {
-                let chunk = data[i..<i+windowStep]
-                let chunkAvg = chunk.map { $0.mag }.reduce(0, +) / Double(chunk.count)
-                let relativeScore = chunkAvg / globalAverage
+        if data.count > windowSize {
+            // Utilisation de la variable strideStep (Int) au lieu du nom de fonction stride
+            for i in stride(from: 0, to: data.count - windowSize, by: strideStep) {
+                let chunk = data[i..<i+windowSize]
+                
+                // Calcul de la MOYENNE sur 20s
+                let avgPower = chunk.map { $0.power }.reduce(0, +) / Double(chunk.count)
                 
                 if let first = chunk.first {
                     let relativeTime = first.t - startTime
                     
-                    // --- VÉRIFICATION CRUCIALE ---
-                    // Est-ce que ce moment (relativeTime) tombe dans une zone où on a de l'audio ?
-                    // On vérifie si le milieu de la fenêtre (relativeTime + 2s) est dans une plage valide.
-                    let checkTime = relativeTime + 2.0
-                    let hasAudio = validAudioRanges.contains { range in
-                        return checkTime >= range.start && checkTime <= range.end
-                    }
-                    
-                    if hasAudio {
-                        windows.append((t: relativeTime, score: relativeScore))
+                    if avgPower > 2.0 {
+                        windows.append((t: relativeTime, score: avgPower))
                     }
                 }
             }
         }
         
+        // SÉLECTION DU TOP
         let sortedWindows = windows.sorted { $0.score > $1.score }
-        
         var selectedPeaks: [(t: Double, score: Double)] = []
+        
         for window in sortedWindows {
-            if selectedPeaks.count >= 10 { break }
-            let isTooClose = selectedPeaks.contains { abs($0.t - window.t) < 120 }
-            if !isTooClose { selectedPeaks.append(window) }
+            if selectedPeaks.count >= 8 { break }
+            
+            let isTooClose = selectedPeaks.contains { abs($0.t - window.t) < 60 }
+            if !isTooClose {
+                selectedPeaks.append(window)
+            }
         }
+        
         return selectedPeaks.sorted(by: { $0.t < $1.t })
     }
     
@@ -848,17 +994,19 @@ class AnalysisManager: NSObject, ObservableObject {
             if let best = moments.max(by: { $0.peakScore < $1.peakScore }) { return [best] }
             return []
         }
-        var validMoments: [HighlightMoment] = []
+        
         let rankedMoments = moments.sorted { $0.peakScore > $1.peakScore }
+        var validMoments: [HighlightMoment] = []
+        
         for candidate in rankedMoments {
             let isDuplicate = validMoments.contains { valid in
                 let sameSong = (valid.song?.title == candidate.song?.title)
-                let timeDiff = abs(valid.timestamp - candidate.timestamp)
-                return (sameSong && timeDiff < 300) || (!sameSong && timeDiff < 120)
+                return sameSong
             }
             if !isDuplicate { validMoments.append(candidate) }
-            if validMoments.count >= 5 { break }
+            if validMoments.count >= 5 { break } // Top 5 Final
         }
+        
         return validMoments.sorted { $0.peakScore > $1.peakScore }
     }
     
