@@ -1,12 +1,10 @@
 import SwiftUI
 import CoreMotion
 import AVFoundation
-import ZIPFoundation // Assure-toi d'avoir ajouté le package ZIPFoundation
+import ZIPFoundation
 import Combine
 import UIKit
-
-// Note: Ce code suppose que le SDK ACRCloud est correctement linké (Bridge Header si Obj-C)
-// et que StreamReader.swift et ErrorManager.swift sont présents dans le projet.
+import Accelerate
 
 // ============================================================================
 // 🎯 SECTION 1: MODÈLES DE DONNÉES
@@ -203,7 +201,7 @@ struct ContentView: View {
                             if currentState == .idle {
                                 showingStartAlert = true
                             } else {
-                                if let start = startTime, Date().timeIntervalSince(start) < 30 {
+                                if let start = startTime, Date().timeIntervalSince(start) < AppConfig.Timing.minSessionDuration {
                                     showingShortSessionAlert = true
                                 } else {
                                     Task { await stopAndAnalyze() }
@@ -663,8 +661,7 @@ class MotionManager {
     // On ne garde plus TOUT l'historique, juste un petit tampon de 50 lignes (5 sec)
     private var writeBuffer: String = ""
     private var bufferCount = 0
-    private let bufferLimit = 50
-    
+    private let bufferLimit = AppConfig.Sensors.bufferSize
     private var fileHandle: FileHandle?
     private var fileURL: URL?
 
@@ -702,7 +699,7 @@ class MotionManager {
         // Activation Proximité
         UIDevice.current.isProximityMonitoringEnabled = true
         
-        mm.deviceMotionUpdateInterval = 0.1 // 10 Hz
+        mm.deviceMotionUpdateInterval = AppConfig.Sensors.updateInterval
         
         mm.startDeviceMotionUpdates(to: .main) { [weak self] (deviceMotion, error) in
             guard let self = self, let data = deviceMotion else { return }
@@ -798,7 +795,7 @@ class AnalysisManager: NSObject, ObservableObject {
         config.accessSecret = info?["ACRSecret"] as? String ?? ""
         
         config.recMode = rec_mode_remote
-        config.requestTimeout = 25 // Augmenté car on envoie 20s d'audio
+        config.requestTimeout = Int(AppConfig.API.requestTimeout)
         config.protocol = "https"
         self.acrClient = ACRCloudRecognition(config: config)
     }
@@ -861,8 +858,7 @@ class AnalysisManager: NSObject, ObservableObject {
               FileManager.default.fileExists(atPath: sensorsURL.path) else { return [] }
         
         let asset = AVURLAsset(url: audioURL)
-        let duration = try? await asset.load(.duration).seconds
-        let isShortSession = (duration ?? 0) < 600
+        let totalDuration = (try? await asset.load(.duration).seconds) ?? 0.0
         
         // 1. RECHERCHE DES PICS (Avec ta formule PartyPower sur 20s)
         let candidates = findSmartPeaks(csvURL: sensorsURL, validAudioRanges: validAudioRanges)
@@ -877,22 +873,20 @@ class AnalysisManager: NSObject, ObservableObject {
             
             let timestamp = candidate.t
             let score = candidate.score // C'est ton PartyPower moyen
-            
-            // 🔥 MODIFICATION : On extrait 20 secondes (au lieu de 12) pour coller à ta fenêtre
-            if let chunk = await extractAudioChunk(asset: asset, at: timestamp, duration: 20) {
-                if let resultJSON = acrClient.recognize(chunk) {
-                    if let song = parseResult(resultJSON) {
-                        recognizedMoments.append(HighlightMoment(timestamp: timestamp, song: song, peakScore: score))
-                        print("✅ Musique trouvée : \(song.title) (Score: \(Int(score)))")
-                    } else {
-                        print("⚠️ Musique non reconnue à \(Int(timestamp))s")
-                    }
+            // On extrait 20 secondes
+            if let chunk = await extractAudioChunk(asset: asset, at: timestamp, duration: AppConfig.Timing.analysisWindowSeconds) {                if let resultJSON = acrClient.recognize(chunk) {
+                if let song = parseResult(resultJSON) {
+                    recognizedMoments.append(HighlightMoment(timestamp: timestamp, song: song, peakScore: score))
+                    print("✅ Musique trouvée : \(song.title) (Score: \(Int(score)))")
+                } else {
+                    print("⚠️ Musique non reconnue à \(Int(timestamp))s")
                 }
+            }
             }
         }
         
         await MainActor.run { self.analysisProgress = 1.0 }
-        return filterMomentsSmartly(moments: recognizedMoments, isShortSession: isShortSession)
+        return filterMomentsSmartly(moments: recognizedMoments, totalDuration: totalDuration)
     }
     
     private func extractAudioChunk(asset: AVURLAsset, at time: TimeInterval, duration: Double) async -> Data? {
@@ -912,14 +906,14 @@ class AnalysisManager: NSObject, ObservableObject {
         return nil
     }
     
-    // --- ALGORITHME PARTY POWER (VERSION 20S) ---
+    // --- ALGORITHME PARTY POWER ---
     private func findSmartPeaks(csvURL: URL, validAudioRanges: [(start: Double, end: Double)]) -> [(t: Double, score: Double)] {
         guard let reader = StreamReader(path: csvURL.path) else { return [] }
         
         var data: [(t: Double, power: Double)] = []
         var previousYaw: Double? = nil
         
-        _ = reader.nextLine() // Skip header
+        _ = reader.nextLine()
         
         for row in reader {
             let cols = row.components(separatedBy: ",")
@@ -935,12 +929,13 @@ class AnalysisManager: NSObject, ObservableObject {
                 var yawChange = 0.0
                 if let prev = previousYaw {
                     yawChange = abs(yaw - prev)
-                    if yawChange > 3.0 { yawChange = 0.0 }
+                    // Remplace > 3.0
+                    if yawChange > AppConfig.Algo.yawChangeThreshold { yawChange = 0.0 }
                 }
                 previousYaw = yaw
                 
-                // FORMULE DU PARTY POWER INSTANTANÉ
-                let rawPartyPower = accelMag + (gyroMag * 15.0) + (yawChange * 50.0)
+                // Remplace * 15.0 et * 50.0
+                let rawPartyPower = accelMag + (gyroMag * AppConfig.Algo.gyroWeight) + (yawChange * AppConfig.Algo.yawWeight)
                 data.append((t, rawPartyPower))
             }
         }
@@ -948,39 +943,33 @@ class AnalysisManager: NSObject, ObservableObject {
         
         guard !data.isEmpty else { return [] }
         
-        // FENÊTRE GLISSANTE 20 SECONDES
-        let windowSize = 200
-        let strideStep = 50 // ✅ RENOMMÉ pour éviter le conflit avec la fonction stride()
+        let windowSize = AppConfig.Algo.windowSizeInLines
+        let strideStep = AppConfig.Algo.strideInLines
         
         var windows: [(t: Double, score: Double)] = []
         let startTime = data[0].t
         
         if data.count > windowSize {
-            // Utilisation de la variable strideStep (Int) au lieu du nom de fonction stride
             for i in stride(from: 0, to: data.count - windowSize, by: strideStep) {
                 let chunk = data[i..<i+windowSize]
-                
-                // Calcul de la MOYENNE sur 20s
                 let avgPower = chunk.map { $0.power }.reduce(0, +) / Double(chunk.count)
                 
                 if let first = chunk.first {
                     let relativeTime = first.t - startTime
-                    
-                    if avgPower > 2.0 {
+                    if avgPower > AppConfig.Algo.minScoreThreshold {
                         windows.append((t: relativeTime, score: avgPower))
                     }
                 }
             }
         }
         
-        // SÉLECTION DU TOP
         let sortedWindows = windows.sorted { $0.score > $1.score }
         var selectedPeaks: [(t: Double, score: Double)] = []
         
         for window in sortedWindows {
-            if selectedPeaks.count >= 8 { break }
-            
-            let isTooClose = selectedPeaks.contains { abs($0.t - window.t) < 60 }
+            if selectedPeaks.count >= AppConfig.Ranking.initialCandidatesLimit { break }
+
+            let isTooClose = selectedPeaks.contains { abs($0.t - window.t) < AppConfig.Timing.minTimeBetweenPeaks }
             if !isTooClose {
                 selectedPeaks.append(window)
             }
@@ -988,27 +977,34 @@ class AnalysisManager: NSObject, ObservableObject {
         
         return selectedPeaks.sorted(by: { $0.t < $1.t })
     }
-    
-    private func filterMomentsSmartly(moments: [HighlightMoment], isShortSession: Bool) -> [HighlightMoment] {
-        if isShortSession {
-            if let best = moments.max(by: { $0.peakScore < $1.peakScore }) { return [best] }
-            return []
-        }
-        
-        let rankedMoments = moments.sorted { $0.peakScore > $1.peakScore }
-        var validMoments: [HighlightMoment] = []
-        
-        for candidate in rankedMoments {
-            let isDuplicate = validMoments.contains { valid in
-                let sameSong = (valid.song?.title == candidate.song?.title)
-                return sameSong
+    private func filterMomentsSmartly(moments: [HighlightMoment], totalDuration: TimeInterval) -> [HighlightMoment] {
+            
+            // 1. On demande à la Config combien on en veut (1, 3 ou 5 ?)
+            let targetCount = AppConfig.Ranking.getTargetCount(for: totalDuration)
+            
+            // 2. On trie par score décroissant (les meilleurs en premier)
+            let rankedMoments = moments.sorted { $0.peakScore > $1.peakScore }
+            
+            var validMoments: [HighlightMoment] = []
+            
+            // 3. On remplit la liste en évitant les doublons de chansons
+            for candidate in rankedMoments {
+                let isDuplicate = validMoments.contains { valid in
+                    // On vérifie si c'est la même chanson (Titre + Artiste)
+                    return valid.song?.title == candidate.song?.title
+                }
+                
+                if !isDuplicate {
+                    validMoments.append(candidate)
+                }
+                
+                // 4. On s'arrête dès qu'on a atteint le chiffre cible (1, 3 ou 5)
+                if validMoments.count >= targetCount { break }
             }
-            if !isDuplicate { validMoments.append(candidate) }
-            if validMoments.count >= 5 { break } // Top 5 Final
+            
+            // On renvoie la liste triée par score
+            return validMoments.sorted { $0.peakScore > $1.peakScore }
         }
-        
-        return validMoments.sorted { $0.peakScore > $1.peakScore }
-    }
     
     private func parseResult(_ jsonString: String?) -> RecognizedSong? {
         guard let str = jsonString, let data = str.data(using: .utf8),
