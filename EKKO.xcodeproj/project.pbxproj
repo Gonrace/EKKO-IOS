@@ -26,6 +26,7 @@
 		DAB744272EE9E01B00C38C4B /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744192EE9DB5E00C38C4B /* RecordingView.swift */; };
 		DAB744282EE9E01B00C38C4B /* AnalyzingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB7441A2EE9DB6900C38C4B /* AnalyzingView.swift */; };
 		DAB744292EE9E01B00C38C4B /* HistoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB7441C2EE9DB7B00C38C4B /* HistoryDetailView.swift */; };
+		DAE0E9932EEA194F00A43D8A /* RhythmAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE0E9922EEA194400A43D8A /* RhythmAnalyzer.swift */; };
 		DAE1123C2EE0889300C77A71 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE1123B2EE0889300C77A71 /* AVFoundation.framework */; };
 		DAE1123E2EE0889D00C77A71 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE1123D2EE0889D00C77A71 /* AudioToolbox.framework */; };
 		DAE112402EE088A400C77A71 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE1123F2EE088A400C77A71 /* Security.framework */; };
@@ -83,6 +84,7 @@
 		DAB7441B2EE9DB7100C38C4B /* FastReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastReportView.swift; sourceTree = "<group>"; };
 		DAB7441C2EE9DB7B00C38C4B /* HistoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryDetailView.swift; sourceTree = "<group>"; };
 		DAB7441D2EE9DD3E00C38C4B /* SessionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsViewModel.swift; sourceTree = "<group>"; };
+		DAE0E9922EEA194400A43D8A /* RhythmAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RhythmAnalyzer.swift; sourceTree = "<group>"; };
 		DAE111F72EE083BA00C77A71 /* EKKO.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EKKO.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DAE112072EE083BB00C77A71 /* EKKOTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EKKOTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DAE112112EE083BB00C77A71 /* EKKOUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EKKOUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -186,6 +188,7 @@
 		DAB7440B2EE9D5E400C38C4B /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				DAE0E9922EEA194400A43D8A /* RhythmAnalyzer.swift */,
 				DAB744172EE9DAC100C38C4B /* HistoryManager.swift */,
 				DAB744152EE9D9B100C38C4B /* StorageManager.swift */,
 				DAB744142EE9D89D00C38C4B /* AnalysisManager.swift */,
@@ -443,6 +446,7 @@
 				DAB744262EE9E01B00C38C4B /* FastReportView.swift in Sources */,
 				DAB744272EE9E01B00C38C4B /* RecordingView.swift in Sources */,
 				DAB744282EE9E01B00C38C4B /* AnalyzingView.swift in Sources */,
+				DAE0E9932EEA194F00A43D8A /* RhythmAnalyzer.swift in Sources */,
 				DAB744292EE9E01B00C38C4B /* HistoryDetailView.swift in Sources */,
 				DAB7441E2EE9DFEA00C38C4B /* PartyModels.swift in Sources */,
 				DAB744242EE9E00E00C38C4B /* SessionsViewModel.swift in Sources */,

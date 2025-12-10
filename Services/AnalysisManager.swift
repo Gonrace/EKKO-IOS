@@ -76,41 +76,58 @@ class AnalysisManager: NSObject, ObservableObject {
     
     // --- ANALYSE PRINCIPALE ---
     func analyzeSessionComplete(audioURL: URL, sensorsURL: URL, validAudioRanges: [(start: Double, end: Double)]) async -> [HighlightMoment] {
-        
+            
         guard FileManager.default.fileExists(atPath: audioURL.path),
               FileManager.default.fileExists(atPath: sensorsURL.path) else { return [] }
-        
+            
         let asset = AVURLAsset(url: audioURL)
         let totalDuration = (try? await asset.load(.duration).seconds) ?? 0.0
-        
-        // 1. RECHERCHE DES PICS (Avec ta formule PartyPower sur 20s)
+            
+        // 1. RECHERCHE DES PICS
+        // La fonction renvoie maintenant un tuple complet avec bpm et db
         let candidates = findSmartPeaks(csvURL: sensorsURL, validAudioRanges: validAudioRanges)
         print("🔍 \(candidates.count) moments 'PartyPower' identifiés.")
         
         var recognizedMoments: [HighlightMoment] = []
         let total = Double(candidates.count)
-        
+            
         // 2. RECONNAISSANCE ACRCLOUD
         for (index, candidate) in candidates.enumerated() {
             await MainActor.run { self.analysisProgress = Double(index) / max(total, 1.0) }
             
             let timestamp = candidate.t
-            let score = candidate.score // C'est ton PartyPower moyen
-            // On extrait 20 secondes
-            if let chunk = await extractAudioChunk(asset: asset, at: timestamp, duration: AppConfig.Timing.analysisWindowSeconds) {                if let resultJSON = acrClient.recognize(chunk) {
-                if let song = parseResult(resultJSON) {
-                    recognizedMoments.append(HighlightMoment(timestamp: timestamp, song: song, peakScore: score))
-                    print("✅ Musique trouvée : \(song.title) (Score: \(Int(score)))")
-                } else {
-                    print("⚠️ Musique non reconnue à \(Int(timestamp))s")
+            let score = candidate.score
+            
+            let userBPM = candidate.bpm
+            let avgDB = candidate.db
+                
+            if let chunk = await extractAudioChunk(asset: asset, at: timestamp, duration: AppConfig.Timing.analysisWindowSeconds) {
+                if let resultJSON = acrClient.recognize(chunk) {
+                    if let song = parseResult(resultJSON) {
+                        
+                        // Création du moment avec TOUTES les données
+                        let newMoment = HighlightMoment(
+                            timestamp: timestamp,
+                            song: song,
+                            peakScore: score,
+                            userBPM: userBPM,       // ✅ Ajouté
+                            musicBPM: 0,            // Placeholder pour l'instant
+                            averagedB: avgDB        // ✅ Ajouté
+                        )
+                            
+                        recognizedMoments.append(newMoment)
+                        print("✅ Musique trouvée : \(song.title) (Score: \(Int(score)), BPM: \(userBPM))")
+                    } else {
+                        print("⚠️ Musique non reconnue à \(Int(timestamp))s")
+                    }
                 }
             }
-            }
         }
-        
+            
         await MainActor.run { self.analysisProgress = 1.0 }
         return filterMomentsSmartly(moments: recognizedMoments, totalDuration: totalDuration)
     }
+
     
     private func extractAudioChunk(asset: AVURLAsset, at time: TimeInterval, duration: Double) async -> Data? {
         guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else { return nil }
@@ -130,65 +147,88 @@ class AnalysisManager: NSObject, ObservableObject {
     }
     
     // --- ALGORITHME PARTY POWER ---
-    private func findSmartPeaks(csvURL: URL, validAudioRanges: [(start: Double, end: Double)]) -> [(t: Double, score: Double)] {
+
+    private func findSmartPeaks(csvURL: URL, validAudioRanges: [(start: Double, end: Double)]) -> [(t: Double, score: Double, bpm: Int, db: Double)] {
+            
         guard let reader = StreamReader(path: csvURL.path) else { return [] }
         
-        var data: [(t: Double, power: Double)] = []
+        // Structure temporaire complète
+        var data: [(t: Double, power: Double, bpm: Int, db: Double)] = []
         var previousYaw: Double? = nil
         
-        _ = reader.nextLine()
-        
+        _ = reader.nextLine() // Skip header
+            
         for row in reader {
             let cols = row.components(separatedBy: ",")
-            if cols.count >= 10,
-               let t = Double(cols[0]),
-               let ax = Double(cols[1]), let ay = Double(cols[2]), let az = Double(cols[3]),
-               let gx = Double(cols[4]), let gy = Double(cols[5]), let gz = Double(cols[6]),
-               let yaw = Double(cols[9]) {
+            if cols.count >= 16,
+                let t = Double(cols[0]),
+                let ax = Double(cols[1]), let ay = Double(cols[2]), let az = Double(cols[3]),
+                let gx = Double(cols[4]), let gy = Double(cols[5]), let gz = Double(cols[6]),
+                let yaw = Double(cols[9]),
+                let recordedBPM = Int(cols[15]) // Col 15 = BPM
+            {
+                // ✅ CORRECTION INDEX : Les dB sont à l'index 13 (voir MotionManager)
+                // Col 13 = audio_power_db, Col 14 = proximity
+                let db = Double(cols[13]) ?? -160.0
                 
+                // Calcul Party Power
                 let accelMag = sqrt(ax*ax + ay*ay + az*az)
                 let gyroMag = sqrt(gx*gx + gy*gy + gz*gz)
-                
                 var yawChange = 0.0
                 if let prev = previousYaw {
                     yawChange = abs(yaw - prev)
-                    // Remplace > 3.0
                     if yawChange > AppConfig.Algo.yawChangeThreshold { yawChange = 0.0 }
                 }
                 previousYaw = yaw
-                
-                // Remplace * 15.0 et * 50.0
-                let rawPartyPower = accelMag + (gyroMag * AppConfig.Algo.gyroWeight) + (yawChange * AppConfig.Algo.yawWeight)
-                data.append((t, rawPartyPower))
+                    
+                var rawPartyPower = accelMag + (gyroMag * AppConfig.Algo.gyroWeight) + (yawChange * AppConfig.Algo.yawWeight)
+                    
+                    // ✅ CONFIG : Utilisation de la plage de BONUS définie dans AppConfig
+                if Double(recordedBPM) >= AppConfig.BPM.bonusRangeMin && Double(recordedBPM) <= AppConfig.BPM.bonusRangeMax {
+                        rawPartyPower *= AppConfig.BPM.rhythmBonusFactor
+                }
+                    
+                data.append((t, rawPartyPower, recordedBPM, db))
             }
         }
         reader.close()
-        
+            
         guard !data.isEmpty else { return [] }
-        
+            
         let windowSize = AppConfig.Algo.windowSizeInLines
         let strideStep = AppConfig.Algo.strideInLines
-        
-        var windows: [(t: Double, score: Double)] = []
+            
+            // ✅ CORRECTION TYPE : Le tableau 'windows' doit stocker tout le tuple
+        var windows: [(t: Double, score: Double, bpm: Int, db: Double)] = []
         let startTime = data[0].t
-        
+            
         if data.count > windowSize {
             for i in stride(from: 0, to: data.count - windowSize, by: strideStep) {
                 let chunk = data[i..<i+windowSize]
+                    
+                // Moyennes sur 20 secondes
                 let avgPower = chunk.map { $0.power }.reduce(0, +) / Double(chunk.count)
-                
+                let avgDB = chunk.map { $0.db }.reduce(0, +) / Double(chunk.count)
+                    
+                // Moyenne BPM (en ignorant les 0)
+                let validBPMs = chunk.map { $0.bpm }.filter { $0 > 0 }
+                let avgBPM = validBPMs.isEmpty ? 0 : (validBPMs.reduce(0, +) / validBPMs.count)
+                    
                 if let first = chunk.first {
                     let relativeTime = first.t - startTime
-                    if avgPower > AppConfig.Algo.minScoreThreshold {
-                        windows.append((t: relativeTime, score: avgPower))
+                    // Pas de seuil, on ajoute tout si > 0
+                    if avgPower > 0 {
+                        windows.append((t: relativeTime, score: avgPower, bpm: avgBPM, db: avgDB))
                     }
                 }
             }
         }
-        
+            
         let sortedWindows = windows.sorted { $0.score > $1.score }
-        var selectedPeaks: [(t: Double, score: Double)] = []
-        
+            
+        // ✅ CORRECTION TYPE : selectedPeaks doit aussi stocker tout le tuple
+        var selectedPeaks: [(t: Double, score: Double, bpm: Int, db: Double)] = []
+            
         for window in sortedWindows {
             if selectedPeaks.count >= AppConfig.Ranking.initialCandidatesLimit { break }
 
@@ -200,6 +240,7 @@ class AnalysisManager: NSObject, ObservableObject {
         
         return selectedPeaks.sorted(by: { $0.t < $1.t })
     }
+
     private func filterMomentsSmartly(moments: [HighlightMoment], totalDuration: TimeInterval) -> [HighlightMoment] {
             
             // 1. On demande à la Config combien on en veut (1, 3 ou 5 ?)

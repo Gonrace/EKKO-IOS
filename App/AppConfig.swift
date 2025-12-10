@@ -2,41 +2,63 @@ import Foundation
 
 struct AppConfig {
     
-    // ==========================================
-    // ⏱️ TEMPS & DURÉES (Les Maîtres du Jeu)
-    // ==========================================
+// ==========================================
+// ⏱️ TEMPS & DURÉES
+// ==========================================
     struct Timing {
-        /// Durée de la fenêtre d'analyse pour un moment fort (ex: 20 secondes)
+        /// Durée de la fenêtre d'analyse pour un moment fort (Audio, Capteurs, BPM)
         static let analysisWindowSeconds: Double = 20.0
         
         /// Durée minimale d'enregistrement pour accepter de sauvegarder
         static let minSessionDuration: TimeInterval = 30.0
         
-        /// Seuil pour considérer une session comme "courte" (ex: moins de 10 min)
-        static let shortSessionThreshold: TimeInterval = 600.0
-        
-        /// Délai entre deux pics retenus pour éviter les doublons (en secondes)
+        /// Temps minimum entre deux moments forts (pour éviter le chevauchement)
         static let minTimeBetweenPeaks: Double = 60.0
+                
+        /// Temps minimum pour accepter la MÊME musique une 2ème fois
+        static let minTimeBetweenSameSong: Double = 600.0
     }
     
-    // ==========================================
-    // 📡 CAPTEURS & CSV (La source de données)
-    // ==========================================
+// ==========================================
+// 📡 CAPTEURS & CSV (La source de données)
+// ==========================================
     struct Sensors {
         /// Fréquence d'enregistrement (Hz).
-        /// Actuellement 10.0. Passer à 50.0 pour le futur PlayerBPM.
-        static let frequency: Double = 10.0
-        
+        static let frequency: Double = 50.0
+    
         /// Intervalle de mise à jour (calculé automatiquement : 0.1s pour 10Hz)
         static let updateInterval: Double = 1.0 / frequency
         
+        /// On veut écrire sur le disque toutes les X secondes (ex: 5 secondes)
+        /// pour ne pas surcharger le processeur avec des écritures trop fréquentes.
+        static let writeIntervalSeconds: Double = 5.0
+        
         /// Nombre de lignes à garder en mémoire tampon avant d'écrire sur le disque
-        static let bufferSize: Int = 50
+        static let bufferSize: Int = Int(frequency*writeIntervalSeconds)
+    }
+
+// ==========================================
+// 🥁 ANALYSE RYTHMIQUE (BPM Player vs Music)
+// ==========================================
+    struct BPM {
+            static let windowSize: Int = Int(Timing.analysisWindowSeconds * Sensors.frequency)
+            
+            /// Plage technique de détection (pour le RhythmAnalyzer)
+            static let min: Double = 60.0
+            static let max: Double = 180.0
+            
+            /// Plage pour appliquer le BONUS (Ce que tu considères comme "Danse")
+            static let bonusRangeMin: Double = 90.0  // ex: En dessous de 90, pas de bonus
+            static let bonusRangeMax: Double = 175.0 // ex: Au dessus de 175, c'est du bruit
+            
+            static let minMovementThreshold: Double = 0.05
+            static let rhythmBonusFactor: Double = 1.2
     }
     
-    // ==========================================
-    // 🧮 ALGORITHME "PARTY POWER" (Les Pondérations)
-    // ==========================================
+    
+// ==========================================
+// 🧮 ALGORITHME "PARTY POWER" (Les Pondérations)
+// ==========================================
     struct Algo {
         /// Poids du Gyroscope (Rotation). Plus élevé car valeurs brutes faibles.
         static let gyroWeight: Double = 15.0
@@ -46,10 +68,7 @@ struct AppConfig {
         
         /// Seuil minimum de changement de Yaw pour être pris en compte
         static let yawChangeThreshold: Double = 3.0
-        
-        /// Score minimum pour qu'une fenêtre soit considérée comme candidate
-        static let minScoreThreshold: Double = 2.0
-        
+           
         // --- Calculs automatiques pour le CSV ---
         
         /// Nombre de lignes CSV correspondant à la fenêtre d'analyse (ex: 20s * 10Hz = 200 lignes)
@@ -60,9 +79,9 @@ struct AppConfig {
         static let strideInLines: Int = windowSizeInLines / 4
     }
     
-    // ==========================================
-    // 🏆 CLASSEMENT & LOGIQUE DE SÉLECTION
-    // ==========================================
+// ==========================================
+// 🏆 CLASSEMENT & LOGIQUE DE SÉLECTION
+// ==========================================
     struct Ranking {
         // --- Seuils de durée (en secondes) ---
         static let limitShort: TimeInterval = 600.0   // 10 minutes
@@ -92,9 +111,9 @@ struct AppConfig {
     
     
     
-    // ==========================================
-    // ☁️ API & RÉSEAU
-    // ==========================================
+// ==========================================
+// ☁️ API & RÉSEAU
+// ==========================================
     struct API {
         /// Temps max pour l'upload et l'analyse d'un morceau
         static let requestTimeout: TimeInterval = 25.0

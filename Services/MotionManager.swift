@@ -10,14 +10,20 @@ import UIKit
 class MotionManager {
     private let mm = CMMotionManager()
     
-    // On ne garde plus TOUT l'historique, juste un petit tampon de 50 lignes (5 sec)
+    // Analyze BPM Player
+    private let rhythmAnalyzer = RhythmAnalyzer()
+    
+    // On ne garde pas tout l'historique, juste un petit tampon
     private var writeBuffer: String = ""
     private var bufferCount = 0
     private let bufferLimit = AppConfig.Sensors.bufferSize
     private var fileHandle: FileHandle?
     private var fileURL: URL?
 
-    // Pour le rapport final
+    // Pour afficher le BPM en direct sur l'app (fonction de test uniquement)
+    var onLiveBPMUpdate: ((Int) -> Void)?
+    
+    // Métadonnées
     private var batteryLevelStart: Float = 0.0
     private var startTime: Date = Date()
 
@@ -27,11 +33,11 @@ class MotionManager {
         self.fileURL = doc.appendingPathComponent("sensors_\(Int(Date().timeIntervalSince1970)).csv")
         
         // 2. En-tête CSV
-        let header = "timestamp,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,attitude_roll,attitude_pitch,attitude_yaw,gravity_x,gravity_y,gravity_z,audio_power_db,proximity\n"
+        let header = "timestamp,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,attitude_roll,attitude_pitch,attitude_yaw,gravity_x,gravity_y,gravity_z,audio_power_db,proximity,bpm\n"
         
         guard let url = fileURL else { return }
         
-        // 3. Ouverture du "tuyau" vers le fichier (FileHandle)
+        // 3. Ouverture du pipe vers le fichier (FileHandle)
         do {
             // On écrit l'en-tête (crée le fichier)
             try header.write(to: url, atomically: true, encoding: .utf8)
@@ -56,21 +62,31 @@ class MotionManager {
         mm.startDeviceMotionUpdates(to: .main) { [weak self] (deviceMotion, error) in
             guard let self = self, let data = deviceMotion else { return }
             
+            let currentBPM = self.rhythmAnalyzer.process(
+                            x: data.userAcceleration.x,
+                            y: data.userAcceleration.y,
+                            z: data.userAcceleration.z
+                        )
+            if currentBPM > 0 { print("🥁 BPM DÉTECTÉ : \(currentBPM)") }
+
             let audioPower = audioRecorder.getCurrentPower()
             let timestamp = Date().timeIntervalSince1970
             let proximity = UIDevice.current.proximityState ? 1 : 0
             
             // 5. Création de la ligne
-            let line = "\(timestamp),\(data.userAcceleration.x),\(data.userAcceleration.y),\(data.userAcceleration.z),\(data.rotationRate.x),\(data.rotationRate.y),\(data.rotationRate.z),\(data.attitude.roll),\(data.attitude.pitch),\(data.attitude.yaw),\(data.gravity.x),\(data.gravity.y),\(data.gravity.z),\(audioPower),\(proximity)\n"
+            let line = "\(timestamp),\(data.userAcceleration.x),\(data.userAcceleration.y),\(data.userAcceleration.z),\(data.rotationRate.x),\(data.rotationRate.y),\(data.rotationRate.z),\(data.attitude.roll),\(data.attitude.pitch),\(data.attitude.yaw),\(data.gravity.x),\(data.gravity.y),\(data.gravity.z),\(audioPower),\(proximity),\(currentBPM)\n"
             
             // 6. Ajout au petit tampon
             self.writeBuffer.append(line)
             self.bufferCount += 1
             
-            // 7. Flush sur le disque tous les 50 échantillons (5 secondes)
+            // 7. Flush sur le disque tous les échantillons
             if self.bufferCount >= self.bufferLimit {
                 self.flushToDisk()
             }
+            
+            // Callback UI (pour afficher le BPM)
+            self.onLiveBPMUpdate?(currentBPM)
         }
     }
     

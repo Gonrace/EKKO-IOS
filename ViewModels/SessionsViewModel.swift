@@ -168,29 +168,49 @@ class SessionViewModel: ObservableObject {
     }
     
     private func saveToHistory(moments: [HighlightMoment]) {
-        let validMoments = moments.map { SavedMoment(timestamp: $0.timestamp, title: $0.song?.title ?? "Inconnu", artist: $0.song?.artist ?? "") }
-        let finalDuration = Date().timeIntervalSince(startTime ?? Date())
-        let report = PartyReport(id: UUID(), date: Date(), duration: finalDuration, moments: validMoments)
-        HistoryManager.shared.saveReport(report)
-        refreshData()
-    }
+            let validMoments = moments.map { moment in
+                SavedMoment(
+                    timestamp: moment.timestamp,
+                    title: moment.song?.title ?? "Inconnu",
+                    artist: moment.song?.artist ?? "",
+                    userBPM: moment.userBPM,      // ✅ Ajouté
+                    musicBPM: moment.musicBPM,    // ✅ Ajouté
+                    averagedB: moment.averagedB   // ✅ Ajouté
+                )
+            }
+            
+            let finalDuration = Date().timeIntervalSince(startTime ?? Date())
+            let report = PartyReport(id: UUID(), date: Date(), duration: finalDuration, moments: validMoments)
+            
+            HistoryManager.shared.saveReport(report)
+            refreshData()
+        }
     
     private func createTempReportJSON(moments: [HighlightMoment]) -> URL? {
-        // On recrée un petit rapport juste pour le JSON
-        let validMoments = moments.map { SavedMoment(timestamp: $0.timestamp, title: $0.song?.title ?? "Inconnu", artist: $0.song?.artist ?? "") }
-        let finalDuration = Date().timeIntervalSince(startTime ?? Date())
-        let report = PartyReport(id: UUID(), date: Date(), duration: finalDuration, moments: validMoments)
-        
-        do {
-            let data = try JSONEncoder().encode(report)
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("report_\(Int(Date().timeIntervalSince1970)).json")
-            try data.write(to: url)
-            return url
-        } catch {
-            ErrorManager.shared.handle(.fileSystem("Erreur JSON temp : \(error.localizedDescription)"))
-            return nil
+            let validMoments = moments.map { moment in
+                SavedMoment(
+                    timestamp: moment.timestamp,
+                    title: moment.song?.title ?? "Inconnu",
+                    artist: moment.song?.artist ?? "",
+                    userBPM: moment.userBPM,      // ✅ Ajouté
+                    musicBPM: moment.musicBPM,    // ✅ Ajouté
+                    averagedB: moment.averagedB   // ✅ Ajouté
+                )
+            }
+            
+            let finalDuration = Date().timeIntervalSince(startTime ?? Date())
+            let report = PartyReport(id: UUID(), date: Date(), duration: finalDuration, moments: validMoments)
+            
+            do {
+                let data = try JSONEncoder().encode(report)
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("report_\(Int(Date().timeIntervalSince1970)).json")
+                try data.write(to: url)
+                return url
+            } catch {
+                ErrorManager.shared.handle(.fileSystem("Erreur JSON temp : \(error.localizedDescription)"))
+                return nil
+            }
         }
-    }
     
     private func startTimer() {
         timerSubscription = Timer.publish(every: 1, on: .main, in: .common).autoconnect().sink { [weak self] _ in
