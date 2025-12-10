@@ -19,7 +19,7 @@ class AudioRecorderManager: NSObject, AVAudioRecorderDelegate {
     
     private func setupAndStartNewRecorder() -> URL? {
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.record, mode: .default, options: [.allowBluetooth])
+        try? session.setCategory(.record, mode: .default, options: [.allowBluetoothA2DP])
         try? session.setActive(true)
         
         let docPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]

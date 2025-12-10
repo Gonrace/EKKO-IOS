@@ -31,15 +31,15 @@ class AnalysisManager: NSObject, ObservableObject {
             let duration: CMTime = (try? await asset.load(.duration)) ?? .zero
             return (urls.first, [(0, duration.seconds)])
         }
-        
+            
         let composition = AVMutableComposition()
         guard let compositionTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return (nil, []) }
-        
+            
         let sortedURLs = urls.sorted { (extractTimestamp(from: $0) ?? 0) < (extractTimestamp(from: $1) ?? 0) }
         guard let firstFile = sortedURLs.first, let startTimeBase = extractTimestamp(from: firstFile) else { return (nil, []) }
-        
+            
         var validRanges: [(start: Double, end: Double)] = []
-        
+            
         for url in sortedURLs {
             let asset = AVURLAsset(url: url)
             do {
@@ -47,7 +47,7 @@ class AnalysisManager: NSObject, ObservableObject {
                 guard let track = tracks.first else { continue }
                 let duration: CMTime = try await asset.load(.duration)
                 guard let fileTimestamp = extractTimestamp(from: url) else { continue }
-                
+                    
                 let timeOffset = fileTimestamp - startTimeBase
                 let insertTime = CMTime(seconds: timeOffset, preferredTimescale: 44100)
                 try compositionTrack.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: track, at: insertTime)
@@ -57,16 +57,20 @@ class AnalysisManager: NSObject, ObservableObject {
         
         let tempDir = FileManager.default.temporaryDirectory
         let outputURL = tempDir.appendingPathComponent("merged_session_\(Int(Date().timeIntervalSince1970)).m4a")
-        try? FileManager.default.removeItem(at: outputURL)
-        
+            // Note: FileManager.default.removeItem(at:) est une fonction throwing, elle doit être dans un do/catch
+            
         guard let exportSession = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else { return (nil, []) }
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .m4a
-        await exportSession.export()
-        
-        return exportSession.status == .completed ? (outputURL, validRanges) : (nil, [])
+        do {
+            try FileManager.default.removeItem(at: outputURL)
+            await exportSession.export()
+            return (outputURL, validRanges)
+        } catch {
+            print("⚠️ Échec Export Fusion : \(error.localizedDescription)")
+            return (nil, [])
+        }
     }
-    
     private func extractTimestamp(from url: URL) -> Double? {
         let filename = url.lastPathComponent.replacingOccurrences(of: ".wav", with: "")
         let components = filename.components(separatedBy: "_")
@@ -127,23 +131,26 @@ class AnalysisManager: NSObject, ObservableObject {
         await MainActor.run { self.analysisProgress = 1.0 }
         return filterMomentsSmartly(moments: recognizedMoments, totalDuration: totalDuration)
     }
-
-    
     private func extractAudioChunk(asset: AVURLAsset, at time: TimeInterval, duration: Double) async -> Data? {
         guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else { return nil }
+            
         let startTime = CMTime(seconds: max(0, time), preferredTimescale: 44100)
-        let durationTime = CMTime(seconds: duration, preferredTimescale: 44100) // Sera 20s maintenant
-        exportSession.outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("chunk_\(UUID().uuidString).m4a")
+        let durationTime = CMTime(seconds: duration, preferredTimescale: 44100)
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("chunk_\(UUID().uuidString).m4a")
+            
+        exportSession.outputURL = outputURL
         exportSession.outputFileType = .m4a
         exportSession.timeRange = CMTimeRange(start: startTime, duration: durationTime)
-        await exportSession.export()
-        
-        if exportSession.status == .completed, let url = exportSession.outputURL {
-            let data = try? Data(contentsOf: url)
-            try? FileManager.default.removeItem(at: url)
+            
+        do {
+            try FileManager.default.removeItem(at: outputURL)
+            await exportSession.export()
+            let data = try Data(contentsOf: outputURL)
             return data
+        } catch {
+            print("⚠️ Échec Extraction Chunk : \(error.localizedDescription)")
+                return nil
         }
-        return nil
     }
     
     // --- ALGORITHME PARTY POWER ---
@@ -240,36 +247,47 @@ class AnalysisManager: NSObject, ObservableObject {
         
         return selectedPeaks.sorted(by: { $0.t < $1.t })
     }
-
     private func filterMomentsSmartly(moments: [HighlightMoment], totalDuration: TimeInterval) -> [HighlightMoment] {
-            
-            // 1. On demande à la Config combien on en veut (1, 3 ou 5 ?)
+                
+            // 1. Quota
             let targetCount = AppConfig.Ranking.getTargetCount(for: totalDuration)
             
-            // 2. On trie par score décroissant (les meilleurs en premier)
+            // 2. Tri par score
             let rankedMoments = moments.sorted { $0.peakScore > $1.peakScore }
             
             var validMoments: [HighlightMoment] = []
             
-            // 3. On remplit la liste en évitant les doublons de chansons
             for candidate in rankedMoments {
-                let isDuplicate = validMoments.contains { valid in
-                    // On vérifie si c'est la même chanson (Titre + Artiste)
-                    return valid.song?.title == candidate.song?.title
-                }
-                
-                if !isDuplicate {
+                // 🔥 GESTION INTELLIGENTE DES DOUBLONS
+                // On cherche si cette chanson existe déjà dans nos validMoments
+                if let existingIndex = validMoments.firstIndex(where: { $0.song?.title == candidate.song?.title }) {
+                    let existingMoment = validMoments[existingIndex]
+                    
+                    // Calcule l'écart de temps
+                    let timeDiff = abs(candidate.timestamp - existingMoment.timestamp)
+                    
+                    // Si l'écart est suffisant (ex: > 10 min), on accepte la "Reprise"
+                    if timeDiff >= AppConfig.Timing.minTimeBetweenSameSong {
+                        validMoments.append(candidate)
+                    } else {
+                        // Sinon, c'est un doublon trop proche : on garde le MEILLEUR des deux
+                        if candidate.peakScore > existingMoment.peakScore {
+                            validMoments.remove(at: existingIndex)
+                            validMoments.append(candidate)
+                        }
+                    }
+                } else {
+                    // Chanson nouvelle -> On ajoute
                     validMoments.append(candidate)
                 }
                 
-                // 4. On s'arrête dès qu'on a atteint le chiffre cible (1, 3 ou 5)
+                // On s'arrête si on a rempli le quota
                 if validMoments.count >= targetCount { break }
             }
             
             // On renvoie la liste triée par score
             return validMoments.sorted { $0.peakScore > $1.peakScore }
         }
-    
     private func parseResult(_ jsonString: String?) -> RecognizedSong? {
         guard let str = jsonString, let data = str.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
