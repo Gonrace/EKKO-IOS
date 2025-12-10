@@ -7,9 +7,25 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		DA75BBE62EE09DC900A762ED /* ACRCloudiOSSDK.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DA75BBE42EE09DB700A762ED /* ACRCloudiOSSDK.xcframework */; };
-		DA75BBE72EE09DC900A762ED /* ACRCloudiOSSDK.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DA75BBE42EE09DB700A762ED /* ACRCloudiOSSDK.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		DA75BBE92EE09F2700A762ED /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = DA75BBE82EE09F2700A762ED /* ZIPFoundation */; };
+		DAB743F92EE84BBB00C38C4B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB743F22EE84BBB00C38C4B /* ContentView.swift */; };
+		DAB743FA2EE84BBB00C38C4B /* EKKOApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB743F42EE84BBB00C38C4B /* EKKOApp.swift */; };
+		DAB743FB2EE84BBB00C38C4B /* ErrorManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB743F52EE84BBB00C38C4B /* ErrorManager.swift */; };
+		DAB743FC2EE84BBB00C38C4B /* StreamReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB743F82EE84BBB00C38C4B /* StreamReader.swift */; };
+		DAB744002EE84BBB00C38C4B /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = DAB743F72EE84BBB00C38C4B /* Secrets.xcconfig */; };
+		DAB744062EE861D900C38C4B /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744052EE861D900C38C4B /* AppConfig.swift */; };
+		DAB7441E2EE9DFEA00C38C4B /* PartyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744162EE9DA7F00C38C4B /* PartyModels.swift */; };
+		DAB7441F2EE9DFF000C38C4B /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744172EE9DAC100C38C4B /* HistoryManager.swift */; };
+		DAB744202EE9DFFA00C38C4B /* StorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744152EE9D9B100C38C4B /* StorageManager.swift */; };
+		DAB744212EE9E00100C38C4B /* AnalysisManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744142EE9D89D00C38C4B /* AnalysisManager.swift */; };
+		DAB744222EE9E00600C38C4B /* MotionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744132EE9D82C00C38C4B /* MotionManager.swift */; };
+		DAB744232EE9E00A00C38C4B /* AudioRecorderManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744122EE9D78600C38C4B /* AudioRecorderManager.swift */; };
+		DAB744242EE9E00E00C38C4B /* SessionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB7441D2EE9DD3E00C38C4B /* SessionsViewModel.swift */; };
+		DAB744252EE9E01500C38C4B /* IdleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744182EE9DB5500C38C4B /* IdleView.swift */; };
+		DAB744262EE9E01B00C38C4B /* FastReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB7441B2EE9DB7100C38C4B /* FastReportView.swift */; };
+		DAB744272EE9E01B00C38C4B /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744192EE9DB5E00C38C4B /* RecordingView.swift */; };
+		DAB744282EE9E01B00C38C4B /* AnalyzingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB7441A2EE9DB6900C38C4B /* AnalyzingView.swift */; };
+		DAB744292EE9E01B00C38C4B /* HistoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB7441C2EE9DB7B00C38C4B /* HistoryDetailView.swift */; };
 		DAE1123C2EE0889300C77A71 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE1123B2EE0889300C77A71 /* AVFoundation.framework */; };
 		DAE1123E2EE0889D00C77A71 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE1123D2EE0889D00C77A71 /* AudioToolbox.framework */; };
 		DAE112402EE088A400C77A71 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DAE1123F2EE088A400C77A71 /* Security.framework */; };
@@ -40,7 +56,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				DA75BBE72EE09DC900A762ED /* ACRCloudiOSSDK.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -48,7 +63,26 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		DA75BBE42EE09DB700A762ED /* ACRCloudiOSSDK.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = ACRCloudiOSSDK.xcframework; sourceTree = "<group>"; };
+		DAB743F22EE84BBB00C38C4B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		DAB743F32EE84BBB00C38C4B /* EKKO-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "EKKO-Bridging-Header.h"; sourceTree = "<group>"; };
+		DAB743F42EE84BBB00C38C4B /* EKKOApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EKKOApp.swift; sourceTree = "<group>"; };
+		DAB743F52EE84BBB00C38C4B /* ErrorManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorManager.swift; sourceTree = "<group>"; };
+		DAB743F62EE84BBB00C38C4B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		DAB743F72EE84BBB00C38C4B /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		DAB743F82EE84BBB00C38C4B /* StreamReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamReader.swift; sourceTree = "<group>"; };
+		DAB744052EE861D900C38C4B /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		DAB744122EE9D78600C38C4B /* AudioRecorderManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorderManager.swift; sourceTree = "<group>"; };
+		DAB744132EE9D82C00C38C4B /* MotionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionManager.swift; sourceTree = "<group>"; };
+		DAB744142EE9D89D00C38C4B /* AnalysisManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisManager.swift; sourceTree = "<group>"; };
+		DAB744152EE9D9B100C38C4B /* StorageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageManager.swift; sourceTree = "<group>"; };
+		DAB744162EE9DA7F00C38C4B /* PartyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartyModels.swift; sourceTree = "<group>"; };
+		DAB744172EE9DAC100C38C4B /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
+		DAB744182EE9DB5500C38C4B /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
+		DAB744192EE9DB5E00C38C4B /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
+		DAB7441A2EE9DB6900C38C4B /* AnalyzingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyzingView.swift; sourceTree = "<group>"; };
+		DAB7441B2EE9DB7100C38C4B /* FastReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastReportView.swift; sourceTree = "<group>"; };
+		DAB7441C2EE9DB7B00C38C4B /* HistoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryDetailView.swift; sourceTree = "<group>"; };
+		DAB7441D2EE9DD3E00C38C4B /* SessionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsViewModel.swift; sourceTree = "<group>"; };
 		DAE111F72EE083BA00C77A71 /* EKKO.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EKKO.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DAE112072EE083BB00C77A71 /* EKKOTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EKKOTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DAE112112EE083BB00C77A71 /* EKKOUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EKKOUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -58,22 +92,35 @@
 		DAE112412EE088AD00C77A71 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		DAE112252EE0845800C77A71 /* Exceptions for "EKKO" folder in "EKKO" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		DAB7442D2EE9E17600C38C4B /* Exceptions for "Dependencies" folder in "Embed Frameworks" phase from "EKKO" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			attributesByRelativePath = {
+				ACRCloudiOSSDK.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+			};
+			buildPhase = DA75BBC42EE0996800A762ED /* Embed Frameworks */;
 			membershipExceptions = (
-				Info.plist,
+				ACRCloudiOSSDK.xcframework,
 			);
-			target = DAE111F62EE083BA00C77A71 /* EKKO */;
 		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		DAE111F92EE083BA00C77A71 /* EKKO */ = {
+		DAB7442B2EE9E10700C38C4B /* Resources */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		DAB7442C2EE9E16500C38C4B /* Dependencies */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				DAE112252EE0845800C77A71 /* Exceptions for "EKKO" folder in "EKKO" target */,
+				DAB7442D2EE9E17600C38C4B /* Exceptions for "Dependencies" folder in "Embed Frameworks" phase from "EKKO" target */,
 			);
+			path = Dependencies;
+			sourceTree = "<group>";
+		};
+		DAE111F92EE083BA00C77A71 /* EKKO */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
 			path = EKKO;
 			sourceTree = "<group>";
 		};
@@ -86,7 +133,6 @@
 			files = (
 				DAE1123C2EE0889300C77A71 /* AVFoundation.framework in Frameworks */,
 				DAE112422EE088AD00C77A71 /* SystemConfiguration.framework in Frameworks */,
-				DA75BBE62EE09DC900A762ED /* ACRCloudiOSSDK.xcframework in Frameworks */,
 				DAE112402EE088A400C77A71 /* Security.framework in Frameworks */,
 				DAE1123E2EE0889D00C77A71 /* AudioToolbox.framework in Frameworks */,
 				DA75BBE92EE09F2700A762ED /* ZIPFoundation in Frameworks */,
@@ -110,10 +156,111 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		DAB744082EE9D5CB00C38C4B /* App */ = {
+			isa = PBXGroup;
+			children = (
+				DAB743F42EE84BBB00C38C4B /* EKKOApp.swift */,
+				DAB744052EE861D900C38C4B /* AppConfig.swift */,
+				DAB743F72EE84BBB00C38C4B /* Secrets.xcconfig */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		DAB744092EE9D5D600C38C4B /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				DAB7440E2EE9D60800C38C4B /* Errors */,
+				DAB7440F2EE9D61000C38C4B /* Utils */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		DAB7440A2EE9D5DC00C38C4B /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				DAB744162EE9DA7F00C38C4B /* PartyModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		DAB7440B2EE9D5E400C38C4B /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				DAB744172EE9DAC100C38C4B /* HistoryManager.swift */,
+				DAB744152EE9D9B100C38C4B /* StorageManager.swift */,
+				DAB744142EE9D89D00C38C4B /* AnalysisManager.swift */,
+				DAB744132EE9D82C00C38C4B /* MotionManager.swift */,
+				DAB744122EE9D78600C38C4B /* AudioRecorderManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		DAB7440C2EE9D5EC00C38C4B /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				DAB7441D2EE9DD3E00C38C4B /* SessionsViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		DAB7440D2EE9D5F600C38C4B /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				DAB743F22EE84BBB00C38C4B /* ContentView.swift */,
+				DAB744102EE9D62100C38C4B /* Screens */,
+				DAB744112EE9D62800C38C4B /* Components */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		DAB7440E2EE9D60800C38C4B /* Errors */ = {
+			isa = PBXGroup;
+			children = (
+				DAB743F52EE84BBB00C38C4B /* ErrorManager.swift */,
+			);
+			path = Errors;
+			sourceTree = "<group>";
+		};
+		DAB7440F2EE9D61000C38C4B /* Utils */ = {
+			isa = PBXGroup;
+			children = (
+				DAB743F82EE84BBB00C38C4B /* StreamReader.swift */,
+			);
+			path = Utils;
+			sourceTree = "<group>";
+		};
+		DAB744102EE9D62100C38C4B /* Screens */ = {
+			isa = PBXGroup;
+			children = (
+				DAB744182EE9DB5500C38C4B /* IdleView.swift */,
+				DAB744192EE9DB5E00C38C4B /* RecordingView.swift */,
+				DAB7441A2EE9DB6900C38C4B /* AnalyzingView.swift */,
+				DAB7441B2EE9DB7100C38C4B /* FastReportView.swift */,
+				DAB7441C2EE9DB7B00C38C4B /* HistoryDetailView.swift */,
+			);
+			path = Screens;
+			sourceTree = "<group>";
+		};
+		DAB744112EE9D62800C38C4B /* Components */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
 		DAE111EE2EE083BA00C77A71 = {
 			isa = PBXGroup;
 			children = (
-				DA75BBE42EE09DB700A762ED /* ACRCloudiOSSDK.xcframework */,
+				DAB743F32EE84BBB00C38C4B /* EKKO-Bridging-Header.h */,
+				DAB743F62EE84BBB00C38C4B /* Info.plist */,
+				DAB7442C2EE9E16500C38C4B /* Dependencies */,
+				DAB7442B2EE9E10700C38C4B /* Resources */,
+				DAB744082EE9D5CB00C38C4B /* App */,
+				DAB744092EE9D5D600C38C4B /* Core */,
+				DAB7440A2EE9D5DC00C38C4B /* Models */,
+				DAB7440B2EE9D5E400C38C4B /* Services */,
+				DAB7440C2EE9D5EC00C38C4B /* ViewModels */,
+				DAB7440D2EE9D5F600C38C4B /* Views */,
 				DAE111F92EE083BA00C77A71 /* EKKO */,
 				DAE112272EE0872F00C77A71 /* Frameworks */,
 				DAE111F82EE083BA00C77A71 /* Products */,
@@ -158,6 +305,8 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				DAB7442B2EE9E10700C38C4B /* Resources */,
+				DAB7442C2EE9E16500C38C4B /* Dependencies */,
 				DAE111F92EE083BA00C77A71 /* EKKO */,
 			);
 			name = EKKO;
@@ -262,6 +411,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DAB744002EE84BBB00C38C4B /* Secrets.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -286,6 +436,23 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DAB743F92EE84BBB00C38C4B /* ContentView.swift in Sources */,
+				DAB744222EE9E00600C38C4B /* MotionManager.swift in Sources */,
+				DAB744062EE861D900C38C4B /* AppConfig.swift in Sources */,
+				DAB744232EE9E00A00C38C4B /* AudioRecorderManager.swift in Sources */,
+				DAB744262EE9E01B00C38C4B /* FastReportView.swift in Sources */,
+				DAB744272EE9E01B00C38C4B /* RecordingView.swift in Sources */,
+				DAB744282EE9E01B00C38C4B /* AnalyzingView.swift in Sources */,
+				DAB744292EE9E01B00C38C4B /* HistoryDetailView.swift in Sources */,
+				DAB7441E2EE9DFEA00C38C4B /* PartyModels.swift in Sources */,
+				DAB744242EE9E00E00C38C4B /* SessionsViewModel.swift in Sources */,
+				DAB743FA2EE84BBB00C38C4B /* EKKOApp.swift in Sources */,
+				DAB7441F2EE9DFF000C38C4B /* HistoryManager.swift in Sources */,
+				DAB744212EE9E00100C38C4B /* AnalysisManager.swift in Sources */,
+				DAB744252EE9E01500C38C4B /* IdleView.swift in Sources */,
+				DAB743FB2EE84BBB00C38C4B /* ErrorManager.swift in Sources */,
+				DAB743FC2EE84BBB00C38C4B /* StreamReader.swift in Sources */,
+				DAB744202EE9DFFA00C38C4B /* StorageManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,8 +488,7 @@
 /* Begin XCBuildConfiguration section */
 		DAE112192EE083BB00C77A71 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReferenceAnchor = DAE111F92EE083BA00C77A71 /* EKKO */;
-			baseConfigurationReferenceRelativePath = Secrets.xcconfig;
+			baseConfigurationReference = DAB743F72EE84BBB00C38C4B /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -380,14 +546,14 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OBJC_BRIDGING_HEADER = "/Users/Paul/Documents/EKKO/EKKO-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
 		};
 		DAE1121A2EE083BB00C77A71 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReferenceAnchor = DAE111F92EE083BA00C77A71 /* EKKO */;
-			baseConfigurationReferenceRelativePath = Secrets.xcconfig;
+			baseConfigurationReference = DAB743F72EE84BBB00C38C4B /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -438,6 +604,7 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OBJC_BRIDGING_HEADER = "/Users/Paul/Documents/EKKO/EKKO-Bridging-Header.h";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -449,14 +616,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"EKKO/Preview Content\"";
 				DEVELOPMENT_TEAM = 62J69A2FA3;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/Frameworks/**";
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Frameworks/**";
-				INFOPLIST_FILE = EKKO/Info.plist;
+				INFOPLIST_FILE = /Users/Paul/Documents/EKKO/Info.plist;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour enregistrer l'audio de la soirée.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Pour analyser vos mouvements.";
@@ -469,11 +636,11 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = paulserra.EKKO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "EKKO/EKKO-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "/Users/Paul/Documents/EKKO/EKKO-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -487,14 +654,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"EKKO/Preview Content\"";
 				DEVELOPMENT_TEAM = 62J69A2FA3;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/Frameworks/**";
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Frameworks/**";
-				INFOPLIST_FILE = EKKO/Info.plist;
+				INFOPLIST_FILE = /Users/Paul/Documents/EKKO/Info.plist;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Pour enregistrer l'audio de la soirée.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Pour analyser vos mouvements.";
@@ -507,11 +674,11 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0;
+				MARKETING_VERSION = 4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = paulserra.EKKO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "EKKO/EKKO-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "/Users/Paul/Documents/EKKO/EKKO-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
