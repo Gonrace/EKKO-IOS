@@ -26,6 +26,9 @@ struct PartyReport: Identifiable, Codable {
     let date: Date
     let duration: TimeInterval
     let moments: [SavedMoment]
+    
+    // 🔥 CORRECTION : Ajout du statut de santé audio global
+    var audioHealthStatus: String = "Statut non déterminé."
 }
 
 struct SavedMoment: Codable, Identifiable {
@@ -35,6 +38,5 @@ struct SavedMoment: Codable, Identifiable {
     let artist: String
     let userBPM: Int
     let musicBPM: Int
-    let averagedB: Double // Double pour la précision des décibels
+    let averagedB: Double
 }
-

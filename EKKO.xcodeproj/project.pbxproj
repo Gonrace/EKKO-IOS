@@ -14,7 +14,7 @@
 		DAB743FC2EE84BBB00C38C4B /* StreamReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB743F82EE84BBB00C38C4B /* StreamReader.swift */; };
 		DAB744002EE84BBB00C38C4B /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = DAB743F72EE84BBB00C38C4B /* Secrets.xcconfig */; };
 		DAB744062EE861D900C38C4B /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744052EE861D900C38C4B /* AppConfig.swift */; };
-		DAB7441E2EE9DFEA00C38C4B /* PartyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744162EE9DA7F00C38C4B /* PartyModels.swift */; };
+		DAB7441E2EE9DFEA00C38C4B /* FastReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744162EE9DA7F00C38C4B /* FastReport.swift */; };
 		DAB7441F2EE9DFF000C38C4B /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744172EE9DAC100C38C4B /* HistoryManager.swift */; };
 		DAB744202EE9DFFA00C38C4B /* StorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744152EE9D9B100C38C4B /* StorageManager.swift */; };
 		DAB744212EE9E00100C38C4B /* AnalysisManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB744142EE9D89D00C38C4B /* AnalysisManager.swift */; };
@@ -76,7 +76,7 @@
 		DAB744132EE9D82C00C38C4B /* MotionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionManager.swift; sourceTree = "<group>"; };
 		DAB744142EE9D89D00C38C4B /* AnalysisManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisManager.swift; sourceTree = "<group>"; };
 		DAB744152EE9D9B100C38C4B /* StorageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageManager.swift; sourceTree = "<group>"; };
-		DAB744162EE9DA7F00C38C4B /* PartyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartyModels.swift; sourceTree = "<group>"; };
+		DAB744162EE9DA7F00C38C4B /* FastReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastReport.swift; sourceTree = "<group>"; };
 		DAB744172EE9DAC100C38C4B /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
 		DAB744182EE9DB5500C38C4B /* IdleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleView.swift; sourceTree = "<group>"; };
 		DAB744192EE9DB5E00C38C4B /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
@@ -180,7 +180,7 @@
 		DAB7440A2EE9D5DC00C38C4B /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				DAB744162EE9DA7F00C38C4B /* PartyModels.swift */,
+				DAB744162EE9DA7F00C38C4B /* FastReport.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -448,7 +448,7 @@
 				DAB744282EE9E01B00C38C4B /* AnalyzingView.swift in Sources */,
 				DAE0E9932EEA194F00A43D8A /* RhythmAnalyzer.swift in Sources */,
 				DAB744292EE9E01B00C38C4B /* HistoryDetailView.swift in Sources */,
-				DAB7441E2EE9DFEA00C38C4B /* PartyModels.swift in Sources */,
+				DAB7441E2EE9DFEA00C38C4B /* FastReport.swift in Sources */,
 				DAB744242EE9E00E00C38C4B /* SessionsViewModel.swift in Sources */,
 				DAB743FA2EE84BBB00C38C4B /* EKKOApp.swift in Sources */,
 				DAB7441F2EE9DFF000C38C4B /* HistoryManager.swift in Sources */,

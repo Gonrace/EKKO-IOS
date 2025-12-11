@@ -14,6 +14,14 @@ struct ContentView: View {
     @State private var showingShortSessionAlert = false
     @State private var isAppActive = true
     
+    var mainButtonBackground: some View {
+        if viewModel.state == .recording {
+            return AnyView(Color.red)
+        } else {
+            return AnyView(LinearGradient(gradient: Gradient(colors: [Color.orange, Color.pink]), startPoint: .leading, endPoint: .trailing))
+        }
+    }
+    
     var body: some View {
         NavigationView {
             ZStack {
@@ -51,6 +59,7 @@ struct ContentView: View {
                             history: $viewModel.history,
                             savedFiles: $viewModel.savedFiles,
                             deleteHistoryAction: { indexSet in
+                                // Assurez-vous que HistoryManager supporte ce modèle
                                 HistoryManager.shared.deleteReport(at: indexSet, from: &viewModel.history)
                             },
                             deleteFileAction: { indexSet in
@@ -69,10 +78,12 @@ struct ContentView: View {
                         RecordingView(elapsedTimeString: $viewModel.elapsedTimeString)
                         
                     case .analyzing:
-                        // Tu pourras lier une vraie progression plus tard
+                        // Lier à la progression du ViewModel si elle est disponible
                         AnalyzingView(progress: 0.5)
                         
                     case .fastReport:
+                        // ⚠️ NOTE: La FastReportView a été modifiée pour recevoir le PartyReport complet
+                        // Le ViewModel doit donc fournir ce rapport, et FastReportView doit être adapté.
                         FastReportView(moments: $viewModel.highlightMoments, onDone: {
                             viewModel.resetToIdle()
                         })
@@ -98,12 +109,12 @@ struct ContentView: View {
                                 }
                             }
                         }) {
-                            Text(viewModel.state == .recording ? "Terminer la Soirée" : "Démarrer la Capture")
+                            Text(mainButtonText) // Utilisation de la propriété simple
                                 .font(.title3).fontWeight(.bold)
                                 .padding()
                                 .frame(maxWidth: .infinity)
                                 .foregroundColor(.white)
-                                .background(viewModel.state == .recording ? AnyView(Color.red) : AnyView(LinearGradient(gradient: Gradient(colors: [Color.orange, Color.pink]), startPoint: .leading, endPoint: .trailing)))
+                                .background(mainButtonBackground) // Utilisation de la propriété simple
                                 .cornerRadius(20)
                         }
                         .padding(.horizontal, 40).padding(.bottom, 20)
@@ -112,6 +123,7 @@ struct ContentView: View {
                 
                 // --- ALERTES ---
                 
+                // Alertes de Session
                 .alert("Avant de commencer", isPresented: $showingStartAlert) {
                     Button("C'est parti !", role: .cancel) { viewModel.startSession() }
                 } message: { Text("Verrouillez l'écran et activez le Mode Avion.") }
@@ -121,7 +133,7 @@ struct ContentView: View {
                     Button("Arrêter sans sauvegarder", role: .destructive) { viewModel.cancelSession() }
                 } message: { Text("Moins de 30 secondes ? C'est trop court.") }
                 
-                // Gestion centralisée des erreurs via le Singleton ErrorManager
+                // Gestion centralisée des erreurs
                 .alert(errorManager.currentError?.localizedDescription ?? "Erreur",
                        isPresented: $errorManager.showError,
                        presenting: errorManager.currentError) { error in
@@ -141,8 +153,7 @@ struct ContentView: View {
         // Gestion foreground/background
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             if !isAppActive {
-                // Si besoin de gérer une interruption audio, on peut ajouter une méthode au VM
-                // viewModel.handleAppResumption()
+                // Ici, vous pourriez appeler viewModel.handleAppResumption() si nécessaire
             }
             isAppActive = true
         }
@@ -150,10 +161,27 @@ struct ContentView: View {
             isAppActive = false
         }
         .onAppear {
-            // Au lancement, on s'assure que les données sont chargées
             viewModel.refreshData()
         }
     }
+    
+    // MARK: - Propriétés Calculées pour l'UI (Stabilité du Compilateur)
+    
+    // 🔥 Correction 1 : Extrait la logique de background
+    var mainButtonBackground: some View {
+        if viewModel.state == .recording {
+            return AnyView(Color.red)
+        } else {
+            return AnyView(LinearGradient(gradient: Gradient(colors: [Color.orange, Color.pink]), startPoint: .leading, endPoint: .trailing))
+        }
+    }
+    
+    // 🔥 Correction 2 : Extrait la logique du texte du bouton (bonne pratique)
+    var mainButtonText: String {
+        viewModel.state == .recording ? "Terminer la Soirée" : "Démarrer la Capture"
+    }
+    
+    // MARK: - Propriétés Statiques
     
     static var appVersionInfo: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Inconnu"
