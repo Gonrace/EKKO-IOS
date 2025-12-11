@@ -109,13 +109,26 @@ struct AppConfig {
         static let initialCandidatesLimit: Int = countLong * 2
     }
     
-    
-    
 // ==========================================
 // ☁️ API & RÉSEAU
 // ==========================================
     struct API {
         /// Temps max pour l'upload et l'analyse d'un morceau
         static let requestTimeout: TimeInterval = 25.0
+    }
+
+// ==========================================
+// 🔊 AUDIO & SANTÉ (dB)
+// ==========================================
+    struct Audio {
+        /// Offset pour convertir les dBFS (iPhone, de -160 à 0) en dBSPL (Réel, ex: 110 dB)
+        /// Standard approximatif : 0 dBFS ≈ 110 dB SPL
+        static let calibrationOffset: Double = 110.0
+    
+        /// Seuil de danger pour la santé auditive (selon les normes d'exposition au bruit)
+        static let dangerThreshold: Double = 95.0
+    
+        /// Seuil pour qualifier une soirée de "Festive" (Volume fort)
+        static let partyThreshold: Double = 85.0
     }
 }

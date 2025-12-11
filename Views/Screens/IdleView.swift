@@ -5,7 +5,7 @@
 import SwiftUI
 
 struct IdleView: View {
-    @Binding var history: [PartyReport]
+    @Binding var history: [FastReport]
     @Binding var savedFiles: [URL]
     var deleteHistoryAction: (IndexSet) -> Void
     var deleteFileAction: (IndexSet) -> Void
@@ -72,4 +72,3 @@ struct EmptyState: View {
     let icon: String; let text: String
     var body: some View { VStack { Spacer(); Image(systemName: icon).font(.system(size: 50)).foregroundColor(.gray); Text(text).foregroundColor(.gray).padding(.top); Spacer() } }
 }
-

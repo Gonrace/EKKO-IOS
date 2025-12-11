@@ -21,7 +21,7 @@ struct RecognizedSong: Hashable {
     let artist: String
 }
 
-struct PartyReport: Identifiable, Codable {
+struct FastReport: Identifiable, Codable {
     let id: UUID
     let date: Date
     let duration: TimeInterval

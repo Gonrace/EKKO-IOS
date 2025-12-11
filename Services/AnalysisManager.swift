@@ -298,5 +298,32 @@ class AnalysisManager: NSObject, ObservableObject {
         let artists = (music["artists"] as? [[String: String]])?.compactMap { $0["name"] }.joined(separator: ", ") ?? ""
         return RecognizedSong(title: title, artist: artists)
     }
+// --- ÉVALUATION SANTÉ AUDITIVE ---
+        
+    func getAudioHealthStatus(moments: [HighlightMoment]) -> String {
+        // 1. On ne regarde que les moments où la musique a été reconnue
+        let relevantMoments = moments.filter { $0.song != nil }
+            
+        guard !relevantMoments.isEmpty else {
+            return "Statut audio non déterminé (Musique non reconnue)."
+        }
+            
+        // 2. On calcule la moyenne des dB sur les moments forts
+        let totalDB = relevantMoments.map { $0.averagedB }.reduce(0, +)
+        let avgDB = totalDB / Double(relevantMoments.count)
+        
+        // 3. On détermine le risque (Statut de la soirée)
+        
+        if avgDB >= AppConfig.Audio.dangerThreshold {
+            let dbString = String(format: "%.1f", avgDB)
+            return "⚠️ Risque Élevé (\(dbString) dB) : L'exposition au volume moyen a dépassé \(Int(AppConfig.Audio.dangerThreshold)) dB. Pensez à protéger vos oreilles !"
+        } else if avgDB >= AppConfig.Audio.partyThreshold {
+            let dbString = String(format: "%.1f", avgDB)
+            return "🔊 Ambiance Festive (\(dbString) dB) : Le volume moyen était soutenu. Niveau élevé, mais acceptable."
+        } else {
+            let dbString = String(format: "%.1f", avgDB)
+            return "😌 Ambiance Modérée (\(dbString) dB) : Le volume était confortable."
+        }
+    }
 }
 

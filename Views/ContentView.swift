@@ -1,11 +1,10 @@
 import SwiftUI
+import UIKit // Nécessaire pour UIApplication
 
 struct ContentView: View {
     
-    // 🔥 Le ViewModel est maintenant le seul maître à bord
+    // ViewModel et ErrorManager
     @StateObject private var viewModel = SessionViewModel()
-    
-    // On garde ErrorManager pour les popups globales
     @StateObject private var errorManager = ErrorManager.shared
     
     // États purement UI (Navigation, Toggle)
@@ -14,6 +13,14 @@ struct ContentView: View {
     @State private var showingShortSessionAlert = false
     @State private var isAppActive = true
     
+    // ==========================================
+    // PROPRIÉTÉS CALCULÉES (FIX COMPILATION)
+    // ==========================================
+
+    var mainButtonText: String {
+        return viewModel.state == .recording ? "Terminer la Soirée" : "Démarrer la Capture"
+    }
+
     var mainButtonBackground: some View {
         if viewModel.state == .recording {
             return AnyView(Color.red)
@@ -21,7 +28,7 @@ struct ContentView: View {
             return AnyView(LinearGradient(gradient: Gradient(colors: [Color.orange, Color.pink]), startPoint: .leading, endPoint: .trailing))
         }
     }
-    
+
     var body: some View {
         NavigationView {
             ZStack {
@@ -55,38 +62,40 @@ struct ContentView: View {
                     // --- ÉCRANS (Basés sur l'état du ViewModel) ---
                     switch viewModel.state {
                     case .idle:
+                        // NOTE: IdlevView non fournie, supposée exister
                         IdleView(
                             history: $viewModel.history,
                             savedFiles: $viewModel.savedFiles,
                             deleteHistoryAction: { indexSet in
-                                // Assurez-vous que HistoryManager supporte ce modèle
                                 HistoryManager.shared.deleteReport(at: indexSet, from: &viewModel.history)
                             },
                             deleteFileAction: { indexSet in
-                                // Suppression via StorageManager
                                 indexSet.forEach { index in
                                     if index < viewModel.savedFiles.count {
                                         StorageManager.shared.deleteFile(url: viewModel.savedFiles[index])
                                     }
                                 }
-                                // On rafraichit la liste
                                 viewModel.refreshData()
                             }
                         )
                         
                     case .recording:
+                        // NOTE: RecordingView non fournie, supposée exister
                         RecordingView(elapsedTimeString: $viewModel.elapsedTimeString)
                         
                     case .analyzing:
-                        // Lier à la progression du ViewModel si elle est disponible
+                        // NOTE: AnalyzingView non fournie, supposée exister
                         AnalyzingView(progress: 0.5)
                         
                     case .fastReport:
-                        // ⚠️ NOTE: La FastReportView a été modifiée pour recevoir le PartyReport complet
-                        // Le ViewModel doit donc fournir ce rapport, et FastReportView doit être adapté.
-                        FastReportView(moments: $viewModel.highlightMoments, onDone: {
-                            viewModel.resetToIdle()
-                        })
+                        // On vérifie que le rapport est bien généré avant l'affichage
+                        if let report = viewModel.fastReportInstance {
+                            FastReportView(report: report, onDone: {
+                                viewModel.resetToIdle()
+                            })
+                        } else {
+                            Text("Erreur: Rapport final manquant")
+                        }
                     }
                     
                     // FOOTER
@@ -101,7 +110,6 @@ struct ContentView: View {
                             if viewModel.state == .idle {
                                 showingStartAlert = true
                             } else {
-                                // Vérification de la durée (logique UI)
                                 if let start = viewModel.startTime, Date().timeIntervalSince(start) < AppConfig.Timing.minSessionDuration {
                                     showingShortSessionAlert = true
                                 } else {
@@ -109,12 +117,12 @@ struct ContentView: View {
                                 }
                             }
                         }) {
-                            Text(mainButtonText) // Utilisation de la propriété simple
+                            Text(mainButtonText)
                                 .font(.title3).fontWeight(.bold)
                                 .padding()
                                 .frame(maxWidth: .infinity)
                                 .foregroundColor(.white)
-                                .background(mainButtonBackground) // Utilisation de la propriété simple
+                                .background(mainButtonBackground)
                                 .cornerRadius(20)
                         }
                         .padding(.horizontal, 40).padding(.bottom, 20)
@@ -123,7 +131,6 @@ struct ContentView: View {
                 
                 // --- ALERTES ---
                 
-                // Alertes de Session
                 .alert("Avant de commencer", isPresented: $showingStartAlert) {
                     Button("C'est parti !", role: .cancel) { viewModel.startSession() }
                 } message: { Text("Verrouillez l'écran et activez le Mode Avion.") }
@@ -152,10 +159,7 @@ struct ContentView: View {
         }
         // Gestion foreground/background
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            if !isAppActive {
-                // Ici, vous pourriez appeler viewModel.handleAppResumption() si nécessaire
-            }
-            isAppActive = true
+             isAppActive = true
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             isAppActive = false
@@ -163,32 +167,16 @@ struct ContentView: View {
         .onAppear {
             viewModel.refreshData()
         }
-    }
+    } // <-- Fermeture du var body: some View
     
-    // MARK: - Propriétés Calculées pour l'UI (Stabilité du Compilateur)
-    
-    // 🔥 Correction 1 : Extrait la logique de background
-    var mainButtonBackground: some View {
-        if viewModel.state == .recording {
-            return AnyView(Color.red)
-        } else {
-            return AnyView(LinearGradient(gradient: Gradient(colors: [Color.orange, Color.pink]), startPoint: .leading, endPoint: .trailing))
-        }
-    }
-    
-    // 🔥 Correction 2 : Extrait la logique du texte du bouton (bonne pratique)
-    var mainButtonText: String {
-        viewModel.state == .recording ? "Terminer la Soirée" : "Démarrer la Capture"
-    }
-    
-    // MARK: - Propriétés Statiques
-    
+    // 🔥 CORRECTION : Position correcte pour la propriété statique
     static var appVersionInfo: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Inconnu"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Inconnu"
         return "Version \(version) (Build \(build))"
     }
-}
+
+} // <-- Fermeture de la struct ContentView
 
 #Preview {
     ContentView()

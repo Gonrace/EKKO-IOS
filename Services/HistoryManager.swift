@@ -16,7 +16,7 @@ class HistoryManager {
         return docPath.appendingPathComponent(fileName)
     }
     
-    func saveReport(_ report: PartyReport) {
+    func saveReport(_ report: FastReport) {
         var history = loadHistory()
         history.insert(report, at: 0)
         
@@ -34,14 +34,14 @@ class HistoryManager {
         }
     }
     
-    func loadHistory() -> [PartyReport] {
+    func loadHistory() -> [FastReport] {
         guard let url = getHistoryFileURL() else {
             return []
         }
         
         do {
             let data = try Data(contentsOf: url)
-            let history = try JSONDecoder().decode([PartyReport].self, from: data)
+            let history = try JSONDecoder().decode([FastReport].self, from: data)
             print("✅ Historique chargé : \(history.count) rapports")
             return history
         } catch {
@@ -52,7 +52,7 @@ class HistoryManager {
         }
     }
     
-    func deleteReport(at offsets: IndexSet, from history: inout [PartyReport]) {
+    func deleteReport(at offsets: IndexSet, from history: inout [FastReport]) {
         history.remove(atOffsets: offsets)
         
         guard let url = getHistoryFileURL() else {
@@ -69,4 +69,3 @@ class HistoryManager {
         }
     }
 }
-

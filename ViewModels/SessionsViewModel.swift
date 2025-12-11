@@ -16,10 +16,16 @@ class SessionViewModel: ObservableObject {
     @Published var state: AppState = .idle
     @Published var statusText: String = "Prêt à capturer la soirée."
     @Published var elapsedTimeString: String = "00:00:00"
+    
+    // NOTE: highlightMoments sert de tampon après analyse (avant conversion en SavedMoment)
     @Published var highlightMoments: [HighlightMoment] = []
     
-    // Pour l'accès aux données depuis la vue
-    @Published var history: [PartyReport] = []
+    // 🔥 Le rapport final complet pour l'affichage FastReportView
+    @Published var fastReportInstance: FastReport? = nil
+    
+    // L'historique stocke les rapports FastReport
+    @Published var history: [FastReport] = []
+    
     @Published var savedFiles: [URL] = []
     
     // MARK: - Services (Les Managers)
@@ -29,16 +35,16 @@ class SessionViewModel: ObservableObject {
     
     // MARK: - Logique Interne
     private var timerSubscription: AnyCancellable?
-    var startTime: Date? // Public pour que la Vue puisse vérifier la durée
+    var startTime: Date?
     private var audioSegments: [URL] = []
     
     // MARK: - Initialisation
     init() {
-        // On charge les données au démarrage
         refreshData()
     }
     
     func refreshData() {
+        // NOTE: Assurez-vous que HistoryManager.shared.loadHistory() retourne bien [FastReport]
         self.history = HistoryManager.shared.loadHistory()
         self.savedFiles = StorageManager.shared.loadSavedFiles()
     }
@@ -46,21 +52,18 @@ class SessionViewModel: ObservableObject {
     // MARK: - Actions Utilisateur
     
     func startSession() {
-        // 1. Mise à jour de l'état
         self.state = .recording
         self.statusText = "🔴 Enregistrement en cours..."
         self.startTime = Date()
         
-        // 2. Démarrage des Services
         audioRecorder.startRecording()
         motionManager.startUpdates(audioRecorder: audioRecorder)
         
-        // 3. Lancement du Timer
         startTimer()
     }
     
     func stopAndAnalyze(isFastReportEnabled: Bool) async {
-        // 1. Arrêt du Timer et des capteurs
+        // 1. Arrêt des capteurs et timer
         stopTimer()
         self.audioSegments = audioRecorder.stopRecording()
         
@@ -70,11 +73,10 @@ class SessionViewModel: ObservableObject {
             return
         }
         
-        // 2. Mise à jour UI
         self.state = .analyzing
-        self.statusText = "Fusion audio en cours..."
+        self.statusText = "Fusion et analyse audio en cours..."
         
-        // 3. Fusion Audio
+        // 2. Fusion Audio
         let (mergedAudioURL, validRanges) = await analysisManager.mergeAudioFiles(urls: audioSegments)
         let finalAudioURL = mergedAudioURL ?? audioSegments.first
         
@@ -84,38 +86,57 @@ class SessionViewModel: ObservableObject {
             return
         }
         
-        // 4. Préparation des fichiers pour le ZIP
+        // 3. Analyse lourde
+        let rangesToUse = mergedAudioURL != nil ? validRanges : [(0.0, 100000.0)]
+        let moments = await analysisManager.analyzeSessionComplete(
+            audioURL: validAudioURL,
+            sensorsURL: sensorsURL,
+            validAudioRanges: rangesToUse
+        )
+        
+        // 4. CRÉATION DU RAPPORT COMPLET (Utilisé pour sauvegarde et affichage)
+        let finalDuration = Date().timeIntervalSince(startTime ?? Date())
+        let healthStatus = analysisManager.getAudioHealthStatus(moments: moments)
+        
+        // Conversion des HighlightMoment (en direct) en SavedMoment (sauvegardé)
+        let savedMoments = moments.map { moment in
+            SavedMoment(
+                timestamp: moment.timestamp,
+                title: moment.song?.title ?? "Inconnu",
+                artist: moment.song?.artist ?? "",
+                userBPM: moment.userBPM,
+                musicBPM: moment.musicBPM,
+                averagedB: moment.averagedB
+            )
+        }
+        
+        let generatedReport = FastReport(
+            id: UUID(),
+            date: Date(),
+            duration: finalDuration,
+            moments: savedMoments,
+            audioHealthStatus: healthStatus
+        )
+        
+        // 5. Sauvegarde des données et gestion du FastReport
+        self.saveToHistory(report: generatedReport) // Sauvegarde du rapport dans l'historique
+        
+        // Préparation des fichiers pour le ZIP
         let metadataURL = motionManager.createMetadataFile(startTime: startTime ?? Date())
         var filesToZip = [validAudioURL, sensorsURL]
         if let meta = metadataURL { filesToZip.append(meta) }
         
-        // 5. Branchement Logique
         if isFastReportEnabled {
-            self.statusText = "Analyse..."
-            
-            // Si pas de fusion, on analyse tout (fallback)
-            let rangesToUse = mergedAudioURL != nil ? validRanges : [(0.0, 100000.0)]
-            
-            // Appel de l'analyse lourde
-            let moments = await analysisManager.analyzeSessionComplete(
-                audioURL: validAudioURL,
-                sensorsURL: sensorsURL,
-                validAudioRanges: rangesToUse
-            )
-            
-            // Sauvegarde Historique
-            saveToHistory(moments: moments)
-            
-            // Sauvegarde Rapport JSON temporaire pour le ZIP
-            if let reportJSON = createTempReportJSON(moments: moments) {
+            // Crée le JSON temporaire pour le ZIP
+            if let reportJSON = createTempReportJSON(report: generatedReport) {
                 filesToZip.append(reportJSON)
             }
             
-            // Finalisation
+            // Finalisation du ZIP
             finishSession(filesToZip: filesToZip, audioSegmentsToDelete: audioSegments)
             
             // Affichage Résultats
-            self.highlightMoments = moments
+            self.fastReportInstance = generatedReport // Stocke le rapport pour l'affichage
             self.statusText = "Voici votre Top Kiff !"
             self.state = .fastReport
             
@@ -143,6 +164,7 @@ class SessionViewModel: ObservableObject {
         self.state = .idle
         self.statusText = "Prêt à capturer la soirée."
         self.elapsedTimeString = "00:00:00"
+        self.fastReportInstance = nil // Nettoyage de l'instance du rapport
         refreshData()
     }
     
@@ -154,7 +176,7 @@ class SessionViewModel: ObservableObject {
             // Callback optionnel si besoin
         }
         
-        // Nettoyage des segments WAV d'origine pour ne pas encombrer
+        // Nettoyage des segments WAV d'origine
         for segment in audioSegmentsToDelete {
             do {
                 try FileManager.default.removeItem(at: segment)
@@ -163,54 +185,30 @@ class SessionViewModel: ObservableObject {
             }
         }
         
-        // Rechargement des fichiers affichés
         refreshData()
     }
     
-    private func saveToHistory(moments: [HighlightMoment]) {
-            let validMoments = moments.map { moment in
-                SavedMoment(
-                    timestamp: moment.timestamp,
-                    title: moment.song?.title ?? "Inconnu",
-                    artist: moment.song?.artist ?? "",
-                    userBPM: moment.userBPM,      // ✅ Ajouté
-                    musicBPM: moment.musicBPM,    // ✅ Ajouté
-                    averagedB: moment.averagedB   // ✅ Ajouté
-                )
-            }
-            
-            let finalDuration = Date().timeIntervalSince(startTime ?? Date())
-            let report = PartyReport(id: UUID(), date: Date(), duration: finalDuration, moments: validMoments)
-            
-            HistoryManager.shared.saveReport(report)
-            refreshData()
-        }
+    // 🔥 CORRECTION : Sauvegarde dans l'historique (FastReport)
+    private func saveToHistory(report: FastReport) {
+        // NOTE : Assurez-vous que HistoryManager.shared.saveReport accepte FastReport
+        HistoryManager.shared.saveReport(report)
+        self.refreshData()
+    }
     
-    private func createTempReportJSON(moments: [HighlightMoment]) -> URL? {
-            let validMoments = moments.map { moment in
-                SavedMoment(
-                    timestamp: moment.timestamp,
-                    title: moment.song?.title ?? "Inconnu",
-                    artist: moment.song?.artist ?? "",
-                    userBPM: moment.userBPM,      // ✅ Ajouté
-                    musicBPM: moment.musicBPM,    // ✅ Ajouté
-                    averagedB: moment.averagedB   // ✅ Ajouté
-                )
-            }
-            
-            let finalDuration = Date().timeIntervalSince(startTime ?? Date())
-            let report = PartyReport(id: UUID(), date: Date(), duration: finalDuration, moments: validMoments)
-            
-            do {
-                let data = try JSONEncoder().encode(report)
-                let url = FileManager.default.temporaryDirectory.appendingPathComponent("report_\(Int(Date().timeIntervalSince1970)).json")
-                try data.write(to: url)
-                return url
-            } catch {
-                ErrorManager.shared.handle(.fileSystem("Erreur JSON temp : \(error.localizedDescription)"))
-                return nil
-            }
+    // 🔥 NOUVEAU : Crée le JSON à partir de l'instance de FastReport pour le ZIP
+    private func createTempReportJSON(report: FastReport) -> URL? {
+        do {
+            let data = try JSONEncoder().encode(report)
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("report_\(Int(Date().timeIntervalSince1970)).json")
+            try data.write(to: url)
+            return url
+        } catch {
+            ErrorManager.shared.handle(.fileSystem("Erreur JSON temp : \(error.localizedDescription)"))
+            return nil
         }
+    }
+    
+    
     
     private func startTimer() {
         timerSubscription = Timer.publish(every: 1, on: .main, in: .common).autoconnect().sink { [weak self] _ in
